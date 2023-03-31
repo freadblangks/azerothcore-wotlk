@@ -67,6 +67,7 @@
 #include "ObjectMgr.h"
 #include "Opcodes.h"
 #include "OutdoorPvPMgr.h"
+#include "QueryHolder.h"
 #include "PetitionMgr.h"
 #include "Player.h"
 #include "PlayerDump.h"
@@ -2249,12 +2250,12 @@ void World::LoadMotd()
         LOG_INFO("server.loading", " ");
     }
 
-    motd = /* fctlsup << //0x338// "63"+"cx""d2"+"1e""dd"+"cx""ds"+"ce""dd"+"ce""7D"+ << */ motd
-        /*"d3"+"ce"*/ + "@|" + "cf" +/*"as"+"k4"*/"fF" + "F4" +/*"d5"+"f3"*/"A2" + "DT"/*"F4"+"Az"*/ + "hi" + "s "
-        /*"fd"+"hy"*/ + "se" + "rv" +/*"nh"+"k3"*/"er" + " r" +/*"x1"+"A2"*/"un" + "s "/*"F2"+"Ay"*/ + "on" + " Az"
-        /*"xs"+"5n"*/ + "er" + "ot" +/*"xs"+"A2"*/"hC" + "or" +/*"a4"+"f3"*/"e|" + "r "/*"f2"+"A2"*/ + "|c" + "ff"
-        /*"5g"+"A2"*/ + "3C" + "E7" +/*"k5"+"AX"*/"FF" + "ww" +/*"sx"+"Gj"*/"w." + "az"/*"a1"+"vf"*/ + "er" + "ot"
-        /*"ds"+"sx"*/ + "hc" + "or" +/*"F4"+"k5"*/"e." + "or" +/*"po"+"xs"*/"g|r"/*"F4"+"p2"+"o4"+"A2"+"i2"*/;;
+    // motd = /* fctlsup << //0x338// "63"+"cx""d2"+"1e""dd"+"cx""ds"+"ce""dd"+"ce""7D"+ << */ motd
+    //     /*"d3"+"ce"*/ + "@|" + "cf" +/*"as"+"k4"*/"fF" + "F4" +/*"d5"+"f3"*/"A2" + "DT"/*"F4"+"Az"*/ + "hi" + "s "
+    //     /*"fd"+"hy"*/ + "se" + "rv" +/*"nh"+"k3"*/"er" + " r" +/*"x1"+"A2"*/"un" + "s "/*"F2"+"Ay"*/ + "on" + " Az"
+    //     /*"xs"+"5n"*/ + "er" + "ot" +/*"xs"+"A2"*/"hC" + "or" +/*"a4"+"f3"*/"e|" + "r "/*"f2"+"A2"*/ + "|c" + "ff"
+    //     /*"5g"+"A2"*/ + "3C" + "E7" +/*"k5"+"AX"*/"FF" + "ww" +/*"sx"+"Gj"*/"w." + "az"/*"a1"+"vf"*/ + "er" + "ot"
+    //     /*"ds"+"sx"*/ + "hc" + "or" +/*"F4"+"k5"*/"e." + "or" +/*"po"+"xs"*/"g|r"/*"F4"+"p2"+"o4"+"A2"+"i2"*/;;
     Motd::SetMotd(motd);
 
     LOG_INFO("server.loading", ">> Loaded Motd Definitions in {} ms", GetMSTimeDiffToNow(oldMSTime));
@@ -2343,6 +2344,8 @@ void World::Update(uint32 diff)
         METRIC_TIMER("world_update_time", METRIC_TAG("type", "Reset guild cap"));
         ResetGuildCap();
     }
+
+    sScriptMgr->OnPlayerbotUpdate(diff);
 
     // pussywizard:
     // acquire mutex now, this is kind of waiting for listing thread to finish it's work (since it can't process next packet)
@@ -2496,6 +2499,7 @@ void World::Update(uint32 diff)
         CharacterDatabase.KeepAlive();
         LoginDatabase.KeepAlive();
         WorldDatabase.KeepAlive();
+        sScriptMgr->OnDatabasesKeepAlive();
     }
 
     {
@@ -2841,6 +2845,8 @@ void World::ShutdownServ(uint32 time, uint32 options, uint8 exitcode, const std:
         _shutdownTimer = time;
         ShutdownMsg(true, nullptr, reason);
     }
+
+    sScriptMgr->OnPlayerbotLogoutBots();
 
     sScriptMgr->OnShutdownInitiate(ShutdownExitCode(exitcode), ShutdownMask(options));
 }
@@ -3291,6 +3297,12 @@ uint64 World::getWorldState(uint32 index) const
 void World::ProcessQueryCallbacks()
 {
     _queryProcessor.ProcessReadyCallbacks();
+    _queryHolderProcessor.ProcessReadyCallbacks();
+}
+
+SQLQueryHolderCallback& World::AddQueryHolderCallback(SQLQueryHolderCallback&& callback)
+{
+    return _queryHolderProcessor.AddCallback(std::move(callback));
 }
 
 void World::RemoveOldCorpses()

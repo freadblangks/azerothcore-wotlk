@@ -144,6 +144,21 @@ struct GameTele
 
 typedef std::unordered_map<uint32, GameTele > GameTeleContainer;
 
+#define MAX_CREATURE_OUTFIT_DISPLAYS 11
+struct CreatureOutfit
+{
+    uint8 race;
+    uint8 gender;
+    uint8 face;
+    uint8 skin;
+    uint8 hair;
+    uint8 facialhair;
+    uint8 haircolor;
+    uint32 outfit[MAX_CREATURE_OUTFIT_DISPLAYS];
+};
+
+typedef std::unordered_map<uint32, CreatureOutfit > CreatureOutfitContainer;
+
 enum ScriptsType
 {
     SCRIPTS_FIRST = 1,
@@ -865,6 +880,7 @@ public:
         return nullptr;
     }
 
+    [[nodiscard]] AreaTriggerTeleportContainer const& GetAllAreaTriggerTeleports() const { return _areaTriggerTeleportStore; }
     [[nodiscard]] AreaTriggerTeleport const* GetAreaTriggerTeleport(uint32 trigger) const
     {
         AreaTriggerTeleportContainer::const_iterator itr = _areaTriggerTeleportStore.find(trigger);
@@ -1090,6 +1106,8 @@ public:
     void LoadQuestPOI();
 
     void LoadNPCSpellClickSpells();
+
+    void LoadCreatureOutfits();
 
     void LoadGameTele();
 
@@ -1361,6 +1379,8 @@ public:
     bool AddGameTele(GameTele& data);
     bool DeleteGameTele(std::string_view name);
 
+    CreatureOutfitContainer const& GetCreatureOutfitMap() const { return _creatureOutfitStore; }
+
     [[nodiscard]] TrainerSpellData const* GetNpcTrainerSpells(uint32 entry) const
     {
         CacheTrainerSpellContainer::const_iterator  iter = _cacheTrainerSpellStore.find(entry);
@@ -1530,6 +1550,8 @@ private:
 
     PageTextContainer _pageTextStore;
     InstanceTemplateContainer _instanceTemplateStore;
+
+    CreatureOutfitContainer _creatureOutfitStore;
 
 private:
     void LoadScripts(ScriptsType type);

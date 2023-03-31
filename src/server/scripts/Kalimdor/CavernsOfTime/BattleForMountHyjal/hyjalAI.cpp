@@ -38,7 +38,7 @@ enum Spawns
     SPAWN_NEAR_TOWER    = 2,
 };
 
-#define YELL_HURRY  "Hurry, we don't have much time"
+#define YELL_HURRY  "快点，我们没有太多时间"
 
 // Locations for summoning gargoyls and frost wyrms in special cases
 float SpawnPointSpecial[3][3] =
@@ -985,6 +985,11 @@ void hyjalAI::DoOverrun(uint32 faction, const uint32 diff)
             {
                 for (std::list<Creature*>::const_iterator itr = creatures.begin(); itr != creatures.end(); ++itr)
                 {
+                    //npcbot: prevent bots from getting UNIT_FLAG_NON_ATTACKABLE
+                    if ((*itr)->IsNPCBotOrPet())
+                        continue;
+                    //end npcbot
+
                     if ((*itr) && (*itr)->IsAlive())
                     {
                         (*itr)->CastSpell(*itr, SPELL_TELEPORT_VISUAL, true);

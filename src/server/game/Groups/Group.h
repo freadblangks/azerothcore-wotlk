@@ -44,7 +44,7 @@ struct MapEntry;
 #define MAX_RAID_SUBGROUPS MAXRAIDSIZE/MAXGROUPSIZE
 #define TARGETICONCOUNT 8
 
-enum RollVote
+enum RollVote : uint32
 {
     PASS              = 0,
     NEED              = 1,
@@ -192,6 +192,9 @@ public:
     bool   Create(Player* leader);
     bool   LoadGroupFromDB(Field* field);
     void   LoadMemberFromDB(ObjectGuid::LowType guidLow, uint8 memberFlags, uint8 subgroup, uint8 roles);
+    //npcbot
+    void LoadCreatureMemberFromDB(uint32 entry, uint8 memberFlags, uint8 subgroup, uint8 roles);
+    //end npcbot
     bool   AddInvite(Player* player);
     void   RemoveInvite(Player* player);
     void   RemoveAllInvites();
@@ -258,6 +261,8 @@ public:
     void SetGroupMemberFlag(ObjectGuid guid, bool apply, GroupMemberFlags flag);
     void RemoveUniqueGroupMemberFlag(GroupMemberFlags flag);
 
+    ObjectGuid const GetTargetIcon(uint8 id) const { return m_targetIcons[id]; }
+
     Difficulty GetDifficulty(bool isRaid) const;
     Difficulty GetDungeonDifficulty() const;
     Difficulty GetRaidDifficulty() const;
@@ -296,6 +301,8 @@ public:
     bool CountRollVote(ObjectGuid playerGUID, ObjectGuid Guid, uint8 Choise);
     void EndRoll(Loot* loot, Map* allowedMap);
 
+    Rolls GetRolls() const { return RollId; }
+
     // related to disenchant rolls
     void ResetMaxEnchantingLevel();
 
@@ -317,6 +324,10 @@ public:
     DifficultyPreventionChangeType GetDifficultyChangePreventionReason() const { return _difficultyChangePreventionType; }
     void SetDifficultyChangePrevention(DifficultyPreventionChangeType type);
     void DoForAllMembers(std::function<void(Player*)> const& worker);
+
+    //npcbots
+    ObjectGuid const* GetTargetIcons() const { return m_targetIcons; }
+    //end npcbots
 
 protected:
     void _homebindIfInstance(Player* player);
