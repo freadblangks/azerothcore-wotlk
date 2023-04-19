@@ -3150,13 +3150,9 @@ public:
             return false;
         }
 
-        BotMgr* mgr = master->GetBotMgr();
-        if (!mgr)
-            mgr = new BotMgr(master);
-
         std::vector<ObjectGuid> guidvec;
         BotDataMgr::GetNPCBotGuidsByOwner(guidvec, master->GetGUID());
-        BotMap const* map = mgr->GetBotMap();
+        BotMap const* map = master->GetBotMgr()->GetBotMap();
         guidvec.erase(std::remove_if(std::begin(guidvec), std::end(guidvec),
             [bmap = map](ObjectGuid guid) { return bmap->find(guid) != bmap->end(); }
         ), std::end(guidvec));
@@ -3392,8 +3388,6 @@ public:
             return return_syntax(handler);
 
         BotMgr* mgr = owner->GetBotMgr();
-        if (!mgr)
-            mgr = new BotMgr(const_cast<Player*>(owner));
 
         if (!names || names->empty())
         {
@@ -3419,7 +3413,12 @@ public:
                 if (name[i] == '_')
                     name[i] = ' ';
 
-            Creature const* bot = BotDataMgr::FindBot(name, owner->GetSession()->GetSessionDbLocaleIndex());
+            std::vector<uint32> bot_ids;
+            bot_ids.reserve(owner->GetBotMgr()->GetNpcBotsCount());
+            for (auto const& kv : *owner->GetBotMgr()->GetBotMap())
+                bot_ids.push_back(kv.first.GetEntry());
+
+            Creature const* bot = BotDataMgr::FindBot(name, owner->GetSession()->GetSessionDbLocaleIndex(), &bot_ids);
             if (bot && bot->IsNPCBot() && !bot->IsTempBot() && !mgr->GetBot(bot->GetGUID()) && bot->GetBotAI()->HasBotCommandState(BOT_COMMAND_UNBIND) &&
                 BotDataMgr::SelectNpcBotData(bot->GetEntry())->owner == owner->GetGUID().GetCounter())
             {
@@ -3625,15 +3624,11 @@ public:
             return false;
         }
 
-        BotMgr* mgr = owner->GetBotMgr();
-        if (!mgr)
-            mgr = new BotMgr(owner);
-
         ObjectGuid::LowType guidlow = owner->GetGUID().GetCounter();
         BotDataMgr::UpdateNpcBotData(bot->GetEntry(), NPCBOT_UPDATE_OWNER, &guidlow);
         bot->GetBotAI()->ReinitOwner();
 
-        if (mgr->AddBot(bot) == BOT_ADD_SUCCESS)
+        if (owner->GetBotMgr()->AddBot(bot) == BOT_ADD_SUCCESS)
         {
             handler->PSendSysMessage("%s 现在是你的NPCBot了", bot->GetName().c_str());
             return true;

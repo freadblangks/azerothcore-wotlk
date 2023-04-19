@@ -443,11 +443,7 @@ inline void Battleground::_ProcessResurrect(uint32 diff)
             if (guid.IsCreature())
             {
                 if (Creature const* cbot = BotDataMgr::FindBot(guid.GetEntry()))
-                {
-                    Creature* bot = const_cast<Creature*>(cbot);
-                    ASSERT(bot->IsInWorld());
-                    BotMgr::ReviveBot(bot);
-                }
+                    BotMgr::ReviveBot(const_cast<Creature*>(cbot));
                 continue;
             }
             //end npcbot
@@ -706,13 +702,6 @@ inline void Battleground::_ProcessLeave(uint32 diff)
     if (m_EndTime <= 0)
     {
         m_EndTime = TIME_TO_AUTOREMOVE; // pussywizard: 0 -> TIME_TO_AUTOREMOVE
-        BattlegroundPlayerMap::iterator itr, next;
-        for (itr = m_Players.begin(); itr != m_Players.end(); itr = next)
-        {
-            next = itr;
-            ++next;
-            itr->second->LeaveBattleground(this); //itr is erased here!
-        }
         //npcbot
         BattlegroundBotMap::iterator bitr, bnext;
         for (bitr = m_Bots.begin(); bitr != m_Bots.end(); bitr = bnext)
@@ -722,6 +711,13 @@ inline void Battleground::_ProcessLeave(uint32 diff)
             RemoveBotAtLeave(bitr->first);
         }
         //end npcbot
+        BattlegroundPlayerMap::iterator itr, next;
+        for (itr = m_Players.begin(); itr != m_Players.end(); itr = next)
+        {
+            next = itr;
+            ++next;
+            itr->second->LeaveBattleground(this); //itr is erased here!
+        }
     }
 }
 
@@ -1080,22 +1076,6 @@ void Battleground::RemovePlayerAtLeave(Player* player)
         {
             if (group->IsMember(player->GetGUID()))
             {
-                //npcbot
-                if (player && player->HaveBot())
-                {
-                    BotMap const* map = player->GetBotMgr()->GetBotMap();
-                    for (BotMap::const_iterator itr = map->begin(); itr != map->end(); ++itr)
-                    {
-                        Creature const* bot = itr->second;
-                        if (!bot || !group->IsMember(bot->GetGUID()))
-                            continue;
-
-                        group->RemoveMember(bot->GetGUID());
-                        UpdatePlayersCountByTeam(teamId, true);
-                        DecreaseInvitedCount(teamId);
-                    }
-                }
-                //end npcbot
                 if (!group->RemoveMember(player->GetGUID())) // group was disbanded
                     SetBgRaid(teamId, nullptr);
             }
@@ -1200,6 +1180,7 @@ void Battleground::RemoveBotAtLeave(ObjectGuid guid)
 
     if (Creature const* bot = BotDataMgr::FindBot(guid.GetEntry()))
     {
+        bot->GetBotAI()->SetBG(nullptr);
         if (bot->IsWandererBot())
         {
             bot->GetBotAI()->canUpdate = false;
@@ -1290,11 +1271,9 @@ void Battleground::AddPlayer(Player* player)
         BotMap const* map = player->GetBotMgr()->GetBotMap();
         for (BotMap::const_iterator itr = map->begin(); itr != map->end(); ++itr)
         {
-            Creature const* bot = itr->second;
-            if (!bot || !player->GetGroup()->IsMember(bot->GetGUID()))
-                continue;
-
-            UpdatePlayersCountByTeam(teamId, false);
+            Creature* bot = itr->second;
+            if (bot && player->GetGroup()->IsMember(itr->first))
+                AddBot(bot);
         }
     }
     //end npcbot
@@ -1361,7 +1340,8 @@ void Battleground::AddBot(Creature* bot)
 
     AddOrSetBotToCorrectBgGroup(bot, teamId);
 
-    if (GetStatus() != STATUS_IN_PROGRESS)
+    bot->GetBotAI()->SetBG(this);
+    if (GetStatus() != STATUS_IN_PROGRESS && bot->IsWandererBot())
         bot->GetBotAI()->SetBotCommandState(BOT_COMMAND_STAY);
 }
 //end npcbot
