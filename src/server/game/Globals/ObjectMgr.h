@@ -578,9 +578,9 @@ struct ReputationOnKillEntry
     uint32 RepFaction1;
     uint32 RepFaction2;
     uint32 ReputationMaxCap1;
-    int32 RepValue1;
+    float RepValue1;
     uint32 ReputationMaxCap2;
-    int32 RepValue2;
+    float RepValue2;
     bool IsTeamAward1;
     bool IsTeamAward2;
     bool TeamDependent;
@@ -880,7 +880,6 @@ public:
         return nullptr;
     }
 
-    [[nodiscard]] AreaTriggerTeleportContainer const& GetAllAreaTriggerTeleports() const { return _areaTriggerTeleportStore; }
     [[nodiscard]] AreaTriggerTeleport const* GetAreaTriggerTeleport(uint32 trigger) const
     {
         AreaTriggerTeleportContainer::const_iterator itr = _areaTriggerTeleportStore.find(trigger);

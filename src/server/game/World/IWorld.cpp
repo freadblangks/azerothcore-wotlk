@@ -15,13 +15,21 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "ScriptMgr.h"
-#include "ScriptMgrMacros.h"
+#include "IWorld.h"
 
-void ScriptMgr::OnMetricLogging()
+class Unit;
+class IWorld;
+
+void IWorld::AddDelayedDamage(Unit* attacker, Unit* victim, uint32 damage, CleanDamage const* cleanDamage, DamageEffectType damagetype, SpellSchoolMask damageSchoolMask, SpellInfo const* spellProto, bool durabilityLoss)
 {
-    ExecuteScript<MetricScript>([&](MetricScript* script)
-    {
-        script->OnMetricLogging();
-    });
+    DelayedDamage delayedDamage;
+    delayedDamage.attacker = attacker;
+    delayedDamage.victim = victim;
+    delayedDamage.damage = damage;
+    delayedDamage.cleanDamage = cleanDamage;
+    delayedDamage.damagetype = damagetype;
+    delayedDamage.damageSchoolMask = damageSchoolMask;
+    delayedDamage.spellProto = spellProto;
+    delayedDamage.durabilityLoss = durabilityLoss;
+    _delayedDamages.push_back(delayedDamage);
 }

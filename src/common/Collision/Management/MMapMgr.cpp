@@ -141,8 +141,7 @@ namespace MMAP
         uint32 packedGridPos = packTileID(x, y);
         if (mmap->loadedTileRefs.find(packedGridPos) != mmap->loadedTileRefs.end())
         {
-            // Peiru: Commented out for now because Playerbots system uses this method to load or check loaded maps and will spam logs
-//            LOG_ERROR("maps", "MMAP:loadMap: Asked to load already loaded navmesh tile. {:03}{:02}{:02}.mmtile", mapId, x, y);
+            LOG_ERROR("maps", "MMAP:loadMap: Asked to load already loaded navmesh tile. {:03}{:02}{:02}.mmtile", mapId, x, y);
             return false;
         }
 
@@ -254,7 +253,7 @@ namespace MMAP
 
         // unload all tiles from given map
         MMapData* mmap = itr->second;
-        for (auto i : mmap->loadedTileRefs)
+        for (auto& i : mmap->loadedTileRefs)
         {
             uint32 x = (i.first >> 16);
             uint32 y = (i.first & 0x0000FFFF);

@@ -230,7 +230,8 @@ GroupQueueInfo* BattlegroundQueue::AddGroup(Player* leader, Group* group, Battle
         SendMessageBGQueue(leader, bg, bracketEntry);
 
     //npcbot: try to queue wandering bots
-    if (!isRated && !arenaType && !arenaTeamId && bgTypeId == BATTLEGROUND_WS)
+    if (!isRated && !arenaType && !arenaTeamId && !sBattlegroundMgr->isTesting() && BotMgr::IsBotGenerationEnabledBGs() &&
+        (bgTypeId == BATTLEGROUND_WS || bgTypeId == BATTLEGROUND_AB))
     {
         if (!BotDataMgr::GenerateBattlegroundBots(leader, group, this, bracketEntry, ginfo))
         {
@@ -303,7 +304,7 @@ GroupQueueInfo* BattlegroundQueue::AddBotAsGroup(ObjectGuid guid, TeamId teamId,
         uint32 qHorde = GetPlayersCountInGroupsQueue(bracketId, BG_QUEUE_NORMAL_HORDE);
         uint32 qAlliance = GetPlayersCountInGroupsQueue(bracketId, BG_QUEUE_NORMAL_ALLIANCE);
         uint32 qTotal = qHorde + qAlliance;
-        sWorld->SendWorldTextOptional(LANG_BG_QUEUE_ANNOUNCE_WORLD, ANNOUNCER_FLAG_DISABLE_BG_QUEUE, bgName.c_str(), q_min_level, q_max_level, qAlliance + qHorde, MaxPlayers);
+        sWorld->SendWorldTextOptional(LANG_BG_QUEUE_ANNOUNCE_WORLD, ANNOUNCER_FLAG_DISABLE_BG_QUEUE, bgName.c_str(), q_min_level, q_max_level, qTotal, MaxPlayers);
     }
 
     return ginfo;

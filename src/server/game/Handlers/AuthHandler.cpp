@@ -23,7 +23,7 @@ void WorldSession::SendAuthResponse(uint8 code, bool shortForm, uint32 queuePos)
 {
     WorldPacket packet(SMSG_AUTH_RESPONSE, 1 + 4 + 1 + 4 + 1 + (shortForm ? 0 : (4 + 1)));
     packet << uint8(code);
-    packet << uint32(urand(2000, 8000));                                   // BillingTimeRemaining
+    packet << uint32(8000 - (GetTotalTime() / 60) % 8000);                                   // BillingTimeRemaining
     packet << uint8(SESSION_USAGE);                                    // BillingPlanFlags
     packet << uint32(0);                                   // BillingTimeRested
     packet << uint8(Expansion());                          // 0 - normal, 1 - TBC, 2 - WOTLK, must be set in database manually for each account

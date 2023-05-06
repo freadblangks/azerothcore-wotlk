@@ -2628,12 +2628,6 @@ void Map::SendObjectUpdates()
     WorldPacket packet;                                     // here we allocate a std::vector with a size of 0x10000
     for (UpdateDataMapType::iterator iter = update_players.begin(); iter != update_players.end(); ++iter)
     {
-        if (!sScriptMgr->OnPlayerbotCheckUpdatesToSend(iter->first))
-        {
-            iter->second.Clear();
-            continue;
-        }
-
         iter->second.BuildPacket(&packet);
         iter->first->GetSession()->SendPacket(&packet);
         packet.clear();                                     // clean the string
@@ -3852,7 +3846,7 @@ void Map::DoForAllPlayers(std::function<void(Player*)> exec)
 bool Map::CanReachPositionAndGetValidCoords(WorldObject const* source, PathGenerator *path, float &destX, float &destY, float &destZ, bool failOnCollision, bool failOnSlopes) const
 {
     G3D::Vector3 prevPath = path->GetStartPosition();
-    for (auto & vector : path->GetPath())
+    for (auto& vector : path->GetPath())
     {
         float x = vector.x;
         float y = vector.y;

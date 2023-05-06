@@ -412,7 +412,7 @@ void WorldSession::HandleBattlegroundPlayerPositionsOpcode(WorldPacket& /*recvDa
 
 void WorldSession::HandlePVPLogDataOpcode(WorldPacket& /*recvData*/)
 {
-    LOG_DEBUG("network", "WORLD: Recvd MSG_PVP_LOG_DATA Message");
+    LOG_TRACE("network", "WORLD: Recvd MSG_PVP_LOG_DATA Message");
 
     Battleground* bg = _player->GetBattleground();
     if (!bg)

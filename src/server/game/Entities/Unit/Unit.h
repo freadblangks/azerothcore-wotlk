@@ -757,6 +757,18 @@ struct CleanDamage
 struct CalcDamageInfo;
 struct SpellNonMeleeDamage;
 
+struct DelayedDamage
+{
+    Unit* attacker;
+    Unit* victim;
+    uint32 damage;
+    CleanDamage const* cleanDamage;
+    DamageEffectType damagetype;
+    SpellSchoolMask damageSchoolMask;
+    SpellInfo const* spellProto;
+    bool durabilityLoss;
+};
+
 class DamageInfo
 {
 private:
@@ -1532,7 +1544,6 @@ public:
 
     ReputationRank GetReactionTo(Unit const* target, bool checkOriginalFaction = false) const;
     ReputationRank GetFactionReactionTo(FactionTemplateEntry const* factionTemplateEntry, Unit const* target) const;
-    static ReputationRank GetFactionReactionTo(FactionTemplateEntry const* factionTemplateEntry, FactionTemplateEntry const* targetFactionTemplateEntry);
 
     bool IsHostileTo(Unit const* unit) const;
     [[nodiscard]] bool IsHostileToPlayers() const;
@@ -1581,7 +1592,7 @@ public:
 
     uint16 GetMaxSkillValueForLevel(Unit const* target = nullptr) const { return (target ? getLevelForTarget(target) : GetLevel()) * 5; }
     static void DealDamageMods(Unit const* victim, uint32& damage, uint32* absorb);
-    static uint32 DealDamage(Unit* attacker, Unit* victim, uint32 damage, CleanDamage const* cleanDamage = nullptr, DamageEffectType damagetype = DIRECT_DAMAGE, SpellSchoolMask damageSchoolMask = SPELL_SCHOOL_MASK_NORMAL, SpellInfo const* spellProto = nullptr, bool durabilityLoss = true, bool allowGM = false, Spell const* spell = nullptr);
+    static uint32 DealDamage(Unit* attacker, Unit* victim, uint32 damage, CleanDamage const* cleanDamage = nullptr, DamageEffectType damagetype = DIRECT_DAMAGE, SpellSchoolMask damageSchoolMask = SPELL_SCHOOL_MASK_NORMAL, SpellInfo const* spellProto = nullptr, bool durabilityLoss = true, bool allowGM = false, Spell const* spell = nullptr, bool delayed = false);
     static void Kill(Unit* killer, Unit* victim, bool durabilityLoss = true, WeaponAttackType attackType = BASE_ATTACK, SpellInfo const* spellProto = nullptr, Spell const* spell = nullptr);
     void KillSelf(bool durabilityLoss = true, WeaponAttackType attackType = BASE_ATTACK, SpellInfo const* spellProto = nullptr, Spell const* spell = nullptr) { Kill(this, this, durabilityLoss, attackType, spellProto, spell); };
     static int32 DealHeal(Unit* healer, Unit* victim, uint32 addhealth);
@@ -1778,7 +1789,6 @@ public:
     Aura* AddAura(SpellInfo const* spellInfo, uint8 effMask, Unit* target);
     void SetAuraStack(uint32 spellId, Unit* target, uint32 stack);
     void SendPlaySpellVisual(uint32 id);
-    void SendPlaySpellVisual(ObjectGuid guid, uint32 id);
     void SendPlaySpellImpact(ObjectGuid guid, uint32 id);
     void BuildCooldownPacket(WorldPacket& data, uint8 flags, uint32 spellId, uint32 cooldown);
     void BuildCooldownPacket(WorldPacket& data, uint8 flags, PacketCooldowns const& cooldowns);
@@ -2525,10 +2535,6 @@ public:
     [[nodiscard]] bool CanRestoreMana(SpellInfo const* spellInfo) const;
 
     std::string GetDebugInfo() const override;
-    void SetCannotReachTargetUnit(bool target, bool isChase);
-    [[nodiscard]] bool CanNotReachTarget() const;
-
-    bool m_cannotReachTarget;
 
     //npcbot
     bool HasReactive(ReactiveType reactive) const { return m_reactiveTimer[reactive] > 0; }

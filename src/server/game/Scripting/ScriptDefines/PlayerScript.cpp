@@ -313,14 +313,6 @@ void ScriptMgr::OnPlayerUpdate(Player* player, uint32 p_time)
     });
 }
 
-void ScriptMgr::OnAfterPlayerUpdate(Player* player, uint32 diff)
-{
-    ExecuteScript<PlayerScript>([&](PlayerScript* script)
-    {
-        script->OnAfterUpdate(player, diff);
-    });
-}
-
 void ScriptMgr::OnPlayerLogin(Player* player)
 {
     ExecuteScript<PlayerScript>([&](PlayerScript* script)
@@ -612,6 +604,21 @@ void ScriptMgr::OnQuestRewardItem(Player* player, Item* item, uint32 count)
     {
         script->OnQuestRewardItem(player, item, count);
     });
+}
+
+bool ScriptMgr::CanPlaceAuctionBid(Player* player, AuctionEntry* auction)
+{
+    auto ret = IsValidBoolScript<PlayerScript>([&](PlayerScript *script)
+    {
+       return !script->CanPlaceAuctionBid(player, auction);
+    });
+
+    if (ret && *ret)
+    {
+        return false;
+    }
+
+    return true;
 }
 
 void ScriptMgr::OnGroupRollRewardItem(Player* player, Item* item, uint32 count, RollVote voteType, Roll* roll)

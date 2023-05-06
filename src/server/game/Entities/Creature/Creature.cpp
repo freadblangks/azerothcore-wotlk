@@ -1477,7 +1477,6 @@ void Creature::SaveToDB(uint32 mapid, uint8 spawnMask, uint32 phaseMask)
         m_spawnId = sObjectMgr->GenerateCreatureSpawnId();
 
     CreatureData& data = sObjectMgr->NewOrExistCreatureData(m_spawnId);
-    data.spawnId = m_spawnId;
 
     uint32 displayId = GetNativeDisplayId();
     uint32 npcflag = GetNpcFlags();
@@ -2495,7 +2494,10 @@ void Creature::SendAIReaction(AiReaction reactionType)
 
     ((WorldObject*)this)->SendMessageToSet(&data, true);
 
-    LOG_DEBUG("network", "WORLD: Sent SMSG_AI_REACTION, type {}.", reactionType);
+    if (reactionType == AI_REACTION_HOSTILE)
+        LOG_TRACE("network", "WORLD: Sent SMSG_AI_REACTION, type {}.", reactionType);
+    else
+        LOG_DEBUG("network", "WORLD: Sent SMSG_AI_REACTION, type {}.", reactionType);
 }
 
 void Creature::CallAssistance(Unit* target /*= nullptr*/)
@@ -2588,12 +2590,6 @@ bool Creature::CanAssistTo(Unit const* u, Unit const* enemy, bool checkfaction /
     // only free creature
     if (GetCharmerOrOwnerGUID())
         return false;
-
-    // Check for ignore assistance extra flag
-    if (m_creatureInfo->HasFlagsExtra(CREATURE_FLAG_EXTRA_IGNORE_ASSISTANCE_CALL))
-    {
-        return false;
-    }
 
     // only from same creature faction
     if (checkfaction)
@@ -3715,7 +3711,7 @@ bool Creature::IsMovementPreventedByCasting() const
 void Creature::SetCannotReachTarget(ObjectGuid const& cannotReach)
 {
     if (cannotReach == m_cannotReachTarget)
-{
+    {
         return;
     }
 
@@ -3984,17 +3980,17 @@ Unit* Creature::GetBotsPet() const
 
 bool Creature::IsNPCBot() const
 {
-    return GetCreatureTemplate()->flags_extra & CREATURE_FLAG_EXTRA_NPCBOT;
+    return GetCreatureTemplate()->IsNPCBot();
 }
 
 bool Creature::IsNPCBotPet() const
 {
-    return GetCreatureTemplate()->flags_extra & CREATURE_FLAG_EXTRA_NPCBOT_PET;
+    return GetCreatureTemplate()->IsNPCBotPet();
 }
 
 bool Creature::IsNPCBotOrPet() const
 {
-    return IsNPCBot() || IsNPCBotPet();
+    return GetCreatureTemplate()->IsNPCBotOrPet();
 }
 
 bool Creature::IsFreeBot() const

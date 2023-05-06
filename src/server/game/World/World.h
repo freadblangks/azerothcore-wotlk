@@ -28,6 +28,7 @@
 #include "QueryResult.h"
 #include "SharedDefines.h"
 #include "Timer.h"
+#include "Unit.h"
 #include <atomic>
 #include <list>
 #include <map>
@@ -70,6 +71,7 @@ enum WorldTimers
     WUPDATE_PINGDB,
     WUPDATE_5_SECS,
     WUPDATE_WHO_LIST,
+    WUPDATE_DELAYED_DAMAGES,
     WUPDATE_COUNT
 };
 
@@ -152,6 +154,8 @@ class World: public IWorld
 public:
     World();
     ~World() override;
+
+    std::list<DelayedDamage> _delayedDamages;
 
     static World* instance();
 
@@ -337,9 +341,7 @@ public:
     // used World DB version
     void LoadDBVersion() override;
     [[nodiscard]] char const* GetDBVersion() const override { return _dbVersion.c_str(); }
-#ifdef MOD_PLAYERBOTS
-    [[nodiscard]] char const* GetPlayerbotsDBRevision() const override { return m_PlayerbotsDBRevision.c_str(); }
-#endif
+
     void LoadMotd() override;
 
     void UpdateAreaDependentAuras() override;
@@ -352,6 +354,10 @@ public:
     void SetRealmName(std::string name) override { _realmName = name; } // pussywizard
 
     void RemoveOldCorpses() override;
+
+    void AddDelayedDamage(Unit* attacker, Unit* victim, uint32 damage, CleanDamage const* cleanDamage, DamageEffectType damagetype, SpellSchoolMask damageSchoolMask, SpellInfo const* spellProto, bool durabilityLoss) override;
+
+    void ProcessDelayedDamages();
 
 protected:
     void _UpdateGameTime();
@@ -370,9 +376,6 @@ protected:
     void ResetRandomBG();
     void CalendarDeleteOldEvents();
     void ResetGuildCap();
-
-    SQLQueryHolderCallback& AddQueryHolderCallback(SQLQueryHolderCallback&& callback) override;
-
 private:
     static std::atomic_long _stopEvent;
     static uint8 _exitCode;
@@ -438,13 +441,9 @@ private:
 
     // used versions
     std::string _dbVersion;
-#ifdef MOD_PLAYERBOTS
-    std::string m_PlayerbotsDBRevision;
-#endif
 
     void ProcessQueryCallbacks();
     QueryCallbackProcessor _queryProcessor;
-    AsyncCallbackProcessor<SQLQueryHolderCallback> _queryHolderProcessor;
 
     /**
      * @brief Executed when a World Session is being finalized. Be it from a normal login or via queue popping.

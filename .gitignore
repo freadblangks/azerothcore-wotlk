@@ -61,8 +61,6 @@ CMakeLists.txt.user
 #
 /.settings/
 /.externalToolBuilders/*
-/.vs
-/out
 # exclude in all levels
 nbproject/
 .sync.ffs_db
