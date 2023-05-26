@@ -123,7 +123,7 @@ GraveyardStruct const* Graveyard::GetClosestGraveyard(Player* player, TeamId tea
     {
         if (z > -500)
         {
-            LOG_ERROR("sql.sql", "GetClosestGraveyard: unable to find zoneId and areaId for map {} coords ({}, {}, {})", mapId, x, y, z);
+            LOG_DEBUG("sql.sql", "GetClosestGraveyard: unable to find zoneId and areaId for map {} coords ({}, {}, {})", mapId, x, y, z);
             return GetDefaultGraveyard(teamId);
         }
     }

@@ -195,6 +195,7 @@ public:
     virtual bool IsNPCBot() const { return false; }
     virtual bool IsNPCBotPet() const { return false; }
     virtual bool IsNPCBotOrPet() const { return false; }
+    virtual bool IsNPCBotTotemOrSummon() const { return false; }
     //end npcbot
 
     [[nodiscard]] inline bool IsPlayer() const { return GetTypeId() == TYPEID_PLAYER; }

@@ -2,6 +2,7 @@
 #define _BOTDATAMGR_H
 
 #include "botcommon.h"
+#include "DatabaseEnvFwd.h"
 
 #include <functional>
 #include <set>
@@ -97,12 +98,12 @@ struct NpcBotTransmogData
 {
     friend class BotDataMgr;
 public:
-    std::pair<uint32 /*item_id*/, uint32 /*fake_id*/> transmogs[BOT_TRANSMOG_INVENTORY_SIZE];
+    std::pair<uint32 /*item_id*/, int32 /*fake_id*/> transmogs[BOT_TRANSMOG_INVENTORY_SIZE];
 private:
     explicit NpcBotTransmogData()
     {
         for (uint8 i = 0; i != BOT_TRANSMOG_INVENTORY_SIZE; ++i)
-            transmogs[i] = { 0, 0 };
+            transmogs[i] = { 0, -1 };
     }
     NpcBotTransmogData(NpcBotTransmogData const&);
 };
@@ -142,6 +143,7 @@ public:
 };
 
 typedef std::set<Creature const*> NpcBotRegistry;
+typedef std::vector<Item*> BotBankItemContainer;
 
 class BotDataMgr
 {
@@ -150,6 +152,7 @@ class BotDataMgr
 
         static void LoadNpcBots(bool spawn = true);
         static void LoadNpcBotGroupData();
+        static void LoadNpcBotGearStorage();
 
         static void AddNpcBotData(uint32 entry, uint32 roles, uint8 spec, uint32 faction);
         static NpcBotData const* SelectNpcBotData(uint32 entry);
@@ -161,7 +164,7 @@ class BotDataMgr
         static NpcBotExtras const* SelectNpcBotExtras(uint32 entry);
 
         static NpcBotTransmogData const* SelectNpcBotTransmogs(uint32 entry);
-        static void UpdateNpcBotTransmogData(uint32 entry, uint8 slot, uint32 item_id, uint32 fake_id, bool update_db = true);
+        static void UpdateNpcBotTransmogData(uint32 entry, uint8 slot, uint32 item_id, int32 fake_id, bool update_db = true);
         static void ResetNpcBotTransmogData(uint32 entry, bool update_db = true);
 
         static bool AllBotsLoaded();
@@ -194,6 +197,11 @@ class BotDataMgr
         static bool IsWanderNodeAvailableForBotFaction(WanderNode const* wp, uint32 factionTemplateId, bool teleport);
         static WanderNode const* GetNextWanderNode(WanderNode const* curNode, WanderNode const* lastNode, Position const* fromPos, Creature const* bot, uint8 lvl, bool random);
         static WanderNode const* GetClosestWanderNode(WorldLocation const* loc);
+
+        static BotBankItemContainer const* GetBotBankItems(ObjectGuid playerGuid);
+        static Item* WithdrawBotBankItem(ObjectGuid playerGuid, ObjectGuid::LowType itemGuidLow);
+        static void DepositBotBankItem(ObjectGuid playerGuid, Item* item);
+        static void SaveNpcBotStoredGear(ObjectGuid playerGuid, CharacterDatabaseTransaction trans);
 
         static std::shared_mutex* GetLock();
 

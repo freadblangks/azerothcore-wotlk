@@ -2679,6 +2679,8 @@ void AuraEffect::HandleAuraModPacify(AuraApplication const* aurApp, uint8 mode, 
     {
         target->SetUnitFlag(UNIT_FLAG_PACIFIED);
         //target->AttackStop(); // pussywizard: why having this flag prevents from being in combat? it should just prevent melee attack
+        target->ClearUnitState(UNIT_STATE_MELEE_ATTACKING);
+        target->SendMeleeAttackStop(target->GetVictim());
     }
     else
     {
@@ -6456,7 +6458,7 @@ void AuraEffect::HandlePeriodicDamageAurasTick(Unit* target, Unit* caster) const
     SpellPeriodicAuraLogInfo pInfo(this, damage, overkill, absorb, resist, 0.0f, crit);
     target->SendPeriodicAuraLog(&pInfo);
 
-    Unit::DealDamage(caster, target, damage, &cleanDamage, DOT, GetSpellInfo()->GetSchoolMask(), GetSpellInfo(), true, false);
+    Unit::DealDamage(caster, target, damage, &cleanDamage, DOT, GetSpellInfo()->GetSchoolMask(), GetSpellInfo(), true);
 
     Unit::ProcDamageAndSpell(caster, target, caster ? procAttacker : 0, procVictim, procEx, damage, BASE_ATTACK, GetSpellInfo(), nullptr, GetEffIndex(), nullptr, &dmgInfo);
 }
