@@ -19,6 +19,7 @@
 #include "CharacterCache.h"
 #include "CharacterDatabase.h"
 #include "Chat.h"
+#include "Config.h"
 #include "DatabaseEnv.h"
 #include "DBCStores.h"
 #include "GameEventMgr.h"
@@ -285,7 +286,7 @@ bot_ai::bot_ai(Creature* creature) : CreatureAI(creature)
 }
 bot_ai::~bot_ai()
 {
-    LOG_INFO("scripts", "bot_ai destructor call for {} ({})", me->GetName().c_str(), me->GetEntry());
+    LOG_DEBUG("scripts", "bot_ai destructor call for {} ({})", me->GetName().c_str(), me->GetEntry());
 
     while (!_spells.empty())
     {
@@ -434,7 +435,7 @@ bool bot_ai::SetBotOwner(Player* newowner)
         return false;
     }
 
-    if (newowner->GetBotMgr()->AddBot(me) & BOT_ADD_FATAL)
+    if (newowner->GetBotMgr()->AddBot(me, true) & BOT_ADD_FATAL)
     {
         checkMasterTimer += 30000;
         return false;
@@ -563,6 +564,10 @@ void bot_ai::ResetBotAI(uint8 resetType)
     _botCommandState = 0;
     _botAwaitState = BOT_AWAIT_NONE;
     _reviveTimer = 0;
+    // Ornfelt: stuckTimer
+    _stuckTimer = urand(3600000, 3700000); // Reset to ~1 Hour
+    stuckWpId = 0;
+
 
     master = reinterpret_cast<Player*>(me);
     if (resetType & BOTAI_RESET_MASK_ABANDON_MASTER)
@@ -988,14 +993,17 @@ void bot_ai::_calculatePos(Unit const* followUnit, Position& pos, float* speed/*
     uint8 followdist = !player ? BotMgr::GetBotFollowDistDefault() / 2 : player->GetBotMgr()->GetBotFollowDist();
     float mydist, angle;
 
-    if (HasRole(BOT_ROLE_TANK) && !IsTank(followUnit))
+    if (HasRole(BOT_ROLE_TANK))
     {
         uint8 tanks = player != master ? 10 : std::max<uint8>(1, player->GetBotMgr()->GetNpcBotsCountByRole(BOT_ROLE_TANK));
         uint8 slot = player != master ? urand(0, 9) : player->GetBotMgr()->GetNpcBotSlotByRole(BOT_ROLE_TANK, me);
         angle = float(M_PI) / 6.0f; //max bias (left of right) //total arc is angle * 2
         angle = (angle / tanks) * (slot - (slot % 2)); //bias
         if (slot % 2) angle *= -1.f; //bias interchange
-        mydist = 3.5f;
+        if (master->GetMap()->IsDungeon() || master->GetMap()->IsRaid())
+            mydist = 6.5f;
+        else
+            mydist = 3.5f;
     }
     else if (HasRole(BOT_ROLE_RANGED))
     {
@@ -2296,10 +2304,14 @@ void bot_ai::SetStats(bool force)
             mylevel = urand(me->GetCreatureTemplate()->minlevel, me->GetCreatureTemplate()->maxlevel);
             mylevel += BotDataMgr::GetLevelBonusForBotRank(me->GetCreatureTemplate()->rank);
             _baseLevel = std::max<uint8>(mylevel, BotDataMgr::GetMinLevelForBotClass(_botclass));
+            // Ornfelt: Bot spawn log
+            //LOG_DEBUG("npcbots", "BG bot {} id {} selected level {}...", me->GetName().c_str(), me->GetEntry(), uint32(_baseLevel));
+            LOG_DEBUG("server.loading", "BG bot {} id {} selected level {}...", me->GetName().c_str(), me->GetEntry(), uint32(_baseLevel));
             if (me->GetMap()->IsBattlegroundOrArena())
                 LOG_DEBUG("npcbots", "BG bot {} id {} selected level {}...", me->GetName().c_str(), me->GetEntry(), uint32(_baseLevel));
             else
-                LOG_DEBUG("npcbots", "Wandering bot {} id {} selected level {}...", me->GetName().c_str(), me->GetEntry(), uint32(_baseLevel));
+                //LOG_DEBUG("npcbots", "Wandering bot {} id {} selected level {}...", me->GetName().c_str(), me->GetEntry(), uint32(_baseLevel));
+                LOG_DEBUG("server.loading", "Wandering bot {} id {} selected level {}...", me->GetName().c_str(), me->GetEntry(), uint32(_baseLevel));
         }
         else if (me->GetMap()->GetEntry()->IsContinent())
         {
@@ -2323,8 +2335,26 @@ void bot_ai::SetStats(bool force)
         if (me->GetLevel() > mylevel)
             UnsummonAll();
 
-        me->SetLevel(mylevel);
-        force = true; //reinit spells/passives/other
+        // Ornfelt: don't level up, but log the "Dings"
+        if (_killsCount > 0)
+        {
+            LOG_DEBUG("server.loading", "BOT DING!!! Bot: {}, prevlevel: {}, mylevel: {}, _killsCount: {}", me->GetEntry(), me->GetLevel(), mylevel, _killsCount);
+            // Don't level up if above level 59
+            if (mylevel >= 60)
+            {
+                //LOG_INFO("server.loading", "mylevel >= 60, reverting to prevlevel");
+                //mylevel = prevlevel;
+                mylevel = me->GetLevel();
+                // Reset _killsCount
+                _killsCount = 0;
+            }
+        }
+
+        if (me->GetLevel() != mylevel)
+        {
+            me->SetLevel(mylevel);
+            force = true; //reinit spells/passives/other
+        }
     }
     if (force)
     {
@@ -3658,6 +3688,10 @@ bool bot_ai::CanBotAttack(Unit const* target, int8 byspell, bool secondary) cons
             case 4952: case 17578: case 24792: case 30527: case 31143: case 31144: case 31146: // training dummy
             case 32541: case 32542: case 32543: case 32545: case 32546: case 32547: case 32666: case 32667: // training dummy
             case 7668: case 7669: case 7670: case 7671: // Blasted Lands servants
+            case 21419: case 21736: case 21749: // Infernal attacker, Wildhammer defender, Shadowmoon scout
+            case 20290: case 26582: case 26583: // Lagoon eel, Horrified Drakkari trolls
+            case 25748: case 25817: case 27290: // Oil-covered hawk, Oiled fledgeling, Hungering dead
+            case 29618: case 24747: case 23693: // Snowblind follower, Fjord hawk, Duskwing eagle
                 return false;
             case 21416: case 21709: case 21710: case 21711: // Shadowmoon Valley Broken element corruptors
                 if (target->HasAuraTypeWithMiscvalue(SPELL_AURA_SCHOOL_IMMUNITY, 127))
@@ -5592,10 +5626,27 @@ uint32 bot_ai::_selectMountSpell() const
 
     if (!myMountSpellId)
     {
+
         using MountArray = std::array<uint32, NUM_MOUNTS_PER_SPEED>;
 
         bool can_fly = !IAmFree() ? master->CanFly() : false; //(!instt && me->GetMap()->GetEntry()->addon > 0);
-        bool useSlowMount = can_fly ? (me->GetLevel() < 70 || maxMountSpeed < 220) : (me->GetLevel() < 40 || maxMountSpeed < 80);
+        bool useSlowMount;
+        if (me->GetLevel() < 40) {
+            return 0;  // No mount if below level 40
+        }
+        else if (me->GetLevel() >= 40 && me->GetLevel() <= 59) {
+            maxMountSpeed = 60;  // Set max speed to 100 for level 40-59
+            useSlowMount = true;
+        }
+        else if (me->GetLevel() >= 60) {
+            if (can_fly) {
+                useSlowMount = (maxMountSpeed < 210);
+            }
+            else {
+                maxMountSpeed = 110;  // Set max speed to 110 for level 60+ ground mounts
+                useSlowMount = (maxMountSpeed < 110);
+            }
+        }
 
         if (!can_fly)
         {
@@ -5720,7 +5771,7 @@ void bot_ai::_updateMountedState()
 
     if (IAmFree())
     {
-        if (!IsWanderer() || me->GetLevel() < 20 || me->HasAuraType(SPELL_AURA_PERIODIC_DAMAGE) ||
+        if (!IsWanderer() || me->GetLevel() < 40 || me->HasAuraType(SPELL_AURA_PERIODIC_DAMAGE) ||
             Feasting() || GetHealthPCT(me) < 80 || (CanDrink() && me->GetMaxPower(POWER_MANA) > 1 && GetManaPCT(me) < 70))
             return;
     }
@@ -5820,14 +5871,14 @@ void bot_ai::_updateRations()
 
     //drink
     if (!feast_mana && me->GetMaxPower(POWER_MANA) > 1 && !me->HasAuraType(SPELL_AURA_MOUNTED) && !me->isMoving() && CanDrink() &&
-        !me->IsInCombat() && !me->GetVehicle() && !IsCasting() && GetManaPCT(me) < 75 && urand(0, 100) < 20)
+        !me->IsInCombat() && !me->GetVehicle() && !IsCasting() && GetManaPCT(me) < 90 && urand(0, 100) < 20)
     {
         me->CastSpell(me, GetRation(true), true);
     }
 
     //eat
     if (!feast_health && !me->HasAuraType(SPELL_AURA_MOUNTED) && !me->isMoving() && CanEat() &&
-        !me->IsInCombat() && !me->GetVehicle() && !IsCasting() && GetHealthPCT(me) < 80 && urand(0, 100) < 20)
+        !me->IsInCombat() && !me->GetVehicle() && !IsCasting() && GetHealthPCT(me) < 90 && urand(0, 100) < 20)
     {
         me->CastSpell(me, GetRation(false), true);
     }
@@ -5969,6 +6020,9 @@ uint32 bot_ai::GetRation(bool drink) const
 void bot_ai::DrinkPotion(bool mana)
 {
     if (IsCasting())
+        return;
+
+    if (urand(1, 1000) >= 50)
         return;
 
     me->CastSpell(me, GetPotion(mana));
@@ -6820,26 +6874,47 @@ void bot_ai::_OnHealthUpdate() const
     uint8 mylevel = master->GetLevel();
     if (myclass == BOT_CLASS_DRUID && GetBotStance() != BOT_STANCE_NONE)
         myclass = GetBotStance();
-    //TC_LOG_ERROR("entities.player", "_OnHealthUpdate(): updating bot %s", me->GetName().c_str());
+
     bool fullhp = me->GetHealth() == me->GetMaxHealth();
-    float pct = fullhp ? 100.f : me->GetHealthPct(); // needs for regeneration
+    float pct = fullhp ? 100.f : me->GetHealthPct();
     uint32 m_basehp = uint32(_classinfo->basehealth * (BotMgr::IsWanderingWorldBot(me) ? BotMgr::GetBotWandererHPMod() : BotMgr::GetBotHPMod()));
-    //TC_LOG_ERROR("entities.player", "class base health: %u", m_basehp);
     me->SetCreateHealth(m_basehp);
 
     float stamValue = _getTotalBotStat(BOT_STAT_MOD_STAMINA);
-
-    stamValue -= std::min<float>(me->GetCreateStat(STAT_STAMINA), 20.f); //not a mistake
+    stamValue -= std::min<float>(me->GetCreateStat(STAT_STAMINA), 20.f);
     stamValue = std::max<float>(stamValue, 0.f);
 
-    //TC_LOG_ERROR("entities.player", "bot's stats to health add: Stamina (%f), value: %f", stamValue, stamValue * 10.f);
-    float hp_add = stamValue * 10.f + 20; //20 is not a mistake;
-    //hp_add += IAmFree() ? mylevel * 375.f : 0; //+30000/+0 hp at 80
+    float hp_add = stamValue * 10.f + 20;
     hp_add += _getTotalBotStat(BOT_STAT_MOD_HEALTH);
-    //TC_LOG_ERROR("entities.player", "health to add after stam mod: %i", hp_add);
     uint32 m_totalhp = m_basehp + int32(hp_add * (BotMgr::IsWanderingWorldBot(me) ? BotMgr::GetBotWandererHPMod() : BotMgr::GetBotHPMod()));
-    //TC_LOG_ERROR("entities.player", "total base health: %u", m_totalhp);
+    if (me->GetMap()->IsRaid())
+        m_totalhp *= BotMgr::GetBotHPRaidMod();
 
+    // Load the tank HP modifier from the config, defaulting to 1 if not set
+    float tankHPModifier = sConfigMgr->GetFloatDefault("NpcBot.TankHPModifier", 1.0f);
+
+    // Tank Bonus
+    if (IsTank() || IsOffTank())
+        m_totalhp *= tankHPModifier;
+
+    if (!me->GetMap()->IsBattlegroundOrArena())
+    {
+        MapEntry const* mapEntry = sMapStore.LookupEntry(me->GetMapId());
+        if (me->GetLevel() < 61 && mapEntry->Expansion() == CONTENT_1_60)
+            m_totalhp *= 0.8;
+        else if (me->GetLevel() < 71 && mapEntry->Expansion() == CONTENT_61_70)
+            m_totalhp *= 0.85;
+    }
+
+    //IndividualProgression
+    if (!me->GetMap()->IsBattlegroundOrArena())
+    {
+        MapEntry const* mapEntry = sMapStore.LookupEntry(me->GetMapId());
+        if (me->GetLevel() < 61 && mapEntry->Expansion() == CONTENT_1_60)
+            m_totalhp *= 0.8;
+        else if (me->GetLevel() < 71 && mapEntry->Expansion() == CONTENT_61_70)
+            m_totalhp *= 0.85;
+    }
     //hp bonuses
     uint8 bonuspct = 0;
     //Endurance Training
@@ -6912,6 +6987,9 @@ void bot_ai::_OnManaUpdate() const
     //m_basemana += IAmFree() ? mylevel * 50.f : 0; //+4000/+0 mana at 80
     m_basemana += _getTotalBotStat(BOT_STAT_MOD_MANA);
 
+    //Add Mana Multiplier
+    m_basemana *= BotMgr::GetBotManaMod();
+    
     //mana bonuses
     uint8 bonuspct = 0;
     //Fel Vitality
@@ -7014,7 +7092,18 @@ void bot_ai::_OnManaRegenUpdate() const
     if ((_botclass == BOT_CLASS_SHAMAN && GetSpec() == BOT_SPEC_SHAMAN_ELEMENTAL) ||
         (_botclass == BOT_CLASS_DRUID && GetSpec() == BOT_SPEC_DRUID_BALANCE))
         power_regen_mp5 += 0.024f * _getTotalBotStat(BOT_STAT_MOD_INTELLECT);
+    //Mana regen Cheat
+    if (me->GetMap()->IsRaid())
+        power_regen_mp5 *= 2;
 
+    if (me->GetMap()->IsDungeon())
+        power_regen_mp5 *= 2;
+
+    if (me->GetMap()->IsHeroic())
+        power_regen_mp5 *= 2;
+
+    if ((me->GetMap()->IsRaid() || me->GetMap()->IsDungeon()) && me->GetBotClass() == BOT_CLASS_PRIEST || me->GetBotClass() == BOT_CLASS_PALADIN)
+        power_regen_mp5 *= 2;
     me->SetStatFloatValue(UNIT_FIELD_POWER_REGEN_INTERRUPTED_FLAT_MODIFIER, power_regen_mp5 + CalculatePct(value, modManaRegenInterrupt));
     me->SetStatFloatValue(UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER, power_regen_mp5 + value);
 }
@@ -10993,6 +11082,29 @@ void bot_ai::SpawnKillReward(Player* looter) const
 
     GameObject* moneyBag = looter->SummonGameObject(GO_BOT_MONEY_BAG, me->m_positionX, me->m_positionY, me->m_positionZ, me->GetOrientation(), 0, 0, 0, 0, REVIVE_TIMER_DEFAULT);
     moneyBag->SetSpellId(GO_BOT_MONEY_BAG + me->GetEntry());
+
+    if (moneyBag && looter)
+    {
+        uint32 playerLevel = looter->getLevel();
+        uint32 botLevel = me->getLevel();
+
+        // Check if the player's level is 60, 70, or 80
+        if (playerLevel == 60 || playerLevel == 70 || playerLevel == 80)
+            return;
+
+        // Check if the level difference is within 3 levels
+        if (std::abs(int(playerLevel) - int(botLevel)) > 3)
+            return;
+
+        uint32 nextLevel = playerLevel + 1;
+        uint32 currentLevelExp = sObjectMgr->GetXPForLevel(playerLevel);
+        uint32 nextLevelExp = sObjectMgr->GetXPForLevel(nextLevel);
+
+        uint32 expForNextLevel = nextLevelExp - currentLevelExp;
+        uint32 expBoost = expForNextLevel * 0.0035;
+
+        looter->GiveXP(expBoost, nullptr);
+    }
 }
 void bot_ai::FillKillReward(GameObject* go) const
 {
@@ -11027,7 +11139,7 @@ void bot_ai::FillKillReward(GameObject* go) const
 
     loot.gold = uint32(lvl * std::min<float>(std::max<float>(gold + _killsCount * gold * 0.04f - _deathsCount * gold * 0.4f, gold), gold * 10.0f));
 
-    //items
+    /* items
     uint32 loot_items_count = 0;
     for (Item const* item : _equips)
     {
@@ -11045,7 +11157,7 @@ void bot_ai::FillKillReward(GameObject* go) const
                 }
             }
         }
-    }
+    }*/
 }
 uint32 bot_ai::_getLootQualityMask() const
 {
@@ -14072,6 +14184,20 @@ void bot_ai::ApplyRacials()
             if (firstspawn)
                 InitSpellMap(RaceSpellForClass(myrace, _botclass), true, false);
             break;
+        case RACE_TAUNKA: //Lightforged Draenei
+            RefreshAura(100254, uint8(!IAmFree())); //Light's Presence 
+            RefreshAura(100256); //Light's Path
+            if (firstspawn) {
+                InitSpellMap(100254, true, false); 
+                InitSpellMap(100256, true, false);     
+            }
+            break;
+        case RACE_TUSKARR: //Eredar
+            RefreshAura(100271, uint8(!IAmFree())); //Villanous Presence
+            if (firstspawn) {
+                InitSpellMap(100271, true, false); 
+            }
+            break;
         default:
             //TC_LOG_ERROR("entities.player", "bot_ai::ApplyRacePassives(): unknown race %u for bot %s (%u)", uint32(me->GetRace()), me->GetName().c_str(), me->GetEntry());
             return;
@@ -15383,6 +15509,7 @@ void bot_ai::JustDied(Unit* u)
                 gr->SendUpdate();
     }
 
+
     if (IsWanderer() && me->GetMap()->IsBattlegroundOrArena())
     {
         if (Battleground const* bg = GetBG())
@@ -15396,8 +15523,9 @@ void bot_ai::JustDied(Unit* u)
     }
     else if (u && (u->IsPvP() || u->IsControlledByPlayer() || u->IsNPCBotOrPet()))
     {
-        LOG_DEBUG("npcbots", "{} {} id {} class {} level {} WAS KILLED BY {} {} id {} class {} level {} on their way to {}!",
-            IsWanderer() ? "Wandering bot" : "Bot", me->GetName().c_str(), me->GetEntry(), uint32(_botclass), uint32(me->GetLevel()),
+        // Ornfelt: bot kill log
+        //LOG_DEBUG("npcbots", "{} {} id {} class {} level {} WAS KILLED BY {} {} id {} class {} level {} on their way to {}!",
+        LOG_DEBUG("server.loading", "{} {} id {} class {} level {} WAS KILLED BY {} {} id {} class {} level {} on their way to {}!", IsWanderer() ? "Wandering bot" : "Bot", me->GetName().c_str(), me->GetEntry(), uint32(_botclass), uint32(me->GetLevel()),
             (u->IsPlayer() ? "player" : u->IsNPCBot() ? u->ToCreature()->GetBotAI()->IsWanderer() ? "wandering bot" : "bot" : u->IsNPCBotPet() ? "botpet" : "creature"),
             u->GetName().c_str(), u->GetEntry(), uint32(u->GetClass()), uint32(u->GetLevel()),
             IsWanderer() ? _travel_node_cur->GetName().c_str() : "''");
@@ -15423,24 +15551,27 @@ void bot_ai::KilledUnit(Unit* u)
         {
             if (IsWanderer())
             {
-                LOG_DEBUG("npcbots", "Wandering bot {} id {} class {} level {} KILLED {} {} id {} class {} level {} on their way to {}!",
-                    me->GetName().c_str(), me->GetEntry(), uint32(_botclass), uint32(me->GetLevel()),
+                // Ornfelt: bot kill log
+                //LOG_DEBUG("npcbots", "Wandering bot {} id {} class {} level {} KILLED {} {} id {} class {} level {} on their way to {}!",
+                LOG_DEBUG("server.loading", "Wandering bot {} id {} class {} level {} KILLED {} {} id {} class {} level {} on their way to {}!", me->GetName().c_str(), me->GetEntry(), uint32(_botclass), uint32(me->GetLevel()),
                     (u->IsPlayer() ? "player" : u->IsNPCBot() ? u->ToCreature()->GetBotAI()->IsWanderer() ? "wandering bot" : "bot" : u->IsNPCBotPet() ? "botpet" : "creature"),
                     u->GetName().c_str(), u->GetEntry(), uint32(u->GetClass()), uint32(u->GetLevel()),
                     _travel_node_cur->GetName().c_str());
             }
             else if (u->IsNPCBot() && u->ToCreature()->GetBotAI()->IsWanderer())
             {
-                LOG_DEBUG("npcbots", "Bot {} id {} class {} level {} KILLED wandering bot {} id {} class {} level {} on their way to {}!",
-                    me->GetName().c_str(), me->GetEntry(), uint32(_botclass), uint32(me->GetLevel()),
+                // Ornfelt: bot kill log
+                //LOG_DEBUG("npcbots", "Bot {} id {} class {} level {} KILLED wandering bot {} id {} class {} level {} on their way to {}!",
+                LOG_DEBUG("server.loading", "Bot {} id {} class {} level {} KILLED wandering bot {} id {} class {} level {} on their way to {}!", me->GetName().c_str(), me->GetEntry(), uint32(_botclass), uint32(me->GetLevel()),
                     u->GetName().c_str(), u->GetEntry(), uint32(u->GetClass()), uint32(u->GetLevel()),
                     IsWanderer() ? _travel_node_cur->GetName().c_str() : "''");
             }
         }
     }
 
-    //handle BG kill BvP, BvB, BvC
-    if (me->GetMap()->IsBattleground())
+    // Ornfelt: Fix arena
+    //if (me->GetMap()->IsBattleground())
+    if (me->GetMap()->IsBattlegroundOrArena())
     {
         Battleground* bg = GetBG();
         //could be removed from BG
@@ -17558,6 +17689,26 @@ void bot_ai::CommonTimers(uint32 diff)
     if (IAmFree())
         UpdateReviveTimer(diff);
 
+    // Ornfelt: stucktimer
+    if (IsWanderer()) {
+        if (!stuckWpId)
+            stuckWpId = 0;
+        if (_stuckTimer > diff)        _stuckTimer -= diff;
+        else {
+            if (stuckWpId == 0 && _travel_node_cur->GetWPId())
+                stuckWpId = _travel_node_cur->GetWPId();
+            else {
+                if (stuckWpId == _travel_node_cur->GetWPId()) {
+                    LOG_DEBUG("server.loading", "Bot stuck! Bot {} id {} stuckWpId: {} TELEPORTING to node {} ('{}')",
+                        me->GetName().c_str(), me->GetEntry(), stuckWpId, _travel_node_cur->GetWPId(), _travel_node_cur->GetName().c_str());
+                    stuckWpId = _travel_node_cur->GetWPId();
+                    me->CastSpell(me, WANDERER_HEARTHSTONE);
+                }
+            }
+            _stuckTimer = urand(7200000, 7300000); // Reset to ~2 hours
+        }
+    }
+
     if (me->IsInWorld())
     {
         if (_wmoAreaUpdateTimer > diff) _wmoAreaUpdateTimer -= diff;
@@ -17589,7 +17740,9 @@ void bot_ai::CommonTimers(uint32 diff)
 
 void bot_ai::UpdateReviveTimer(uint32 diff)
 {
-    if (me->IsAlive())
+    // Ornfelt: Don't revive bots in arena
+    //if (me->IsAlive())
+    if (me->IsAlive() || me->GetMap()->IsBattleArena())
         return;
 
     if (_reviveTimer > diff)        _reviveTimer -= diff;
@@ -17677,12 +17830,28 @@ void bot_ai::Evade()
 
     if (IsWanderer())
     {
+        // Ornfelt: fix blade's edge
+        uint32 curr_zone, curr_area;
+        me->GetZoneAndAreaId(curr_zone, curr_area);
         if (mapid != me->GetMap()->GetId() || _evadeCount >= 50 || me->GetExactDist2d(pos) > MAX_WANDER_NODE_DISTANCE ||
-            me->GetPositionZ() <= INVALID_HEIGHT || (me->GetExactDist2d(pos) < 20.0f && me->GetExactDist(pos) > 100.0f))
+            me->GetPositionZ() <= INVALID_HEIGHT || (me->GetExactDist2d(pos) < 20.0f && me->GetExactDist(pos) > 100.0f)
+            // Ornfelt: fix blade's edge
+            || (curr_zone == 3522 && me->GetPositionZ() > 290))
         {
-            LOG_DEBUG("npcbots", "Bot {} id {} class {} level {} map {} TELEPORTING to node {} ('{}') map {}, {}, dist {} yd!",
-                me->GetName().c_str(), me->GetEntry(), uint32(_botclass), uint32(me->GetLevel()), me->GetMapId(), _travel_node_cur->GetWPId(),
-                _travel_node_cur->GetName().c_str(), uint32(mapid), pos.ToString().c_str(), me->GetExactDist(pos));
+            if ((curr_zone == 3522 && me->GetPositionZ() > 290))
+            {
+                LOG_ERROR("server.loading", "Bot has invalid height in Blade's Edge! Bot {} id {} class {} level {} map {} TELEPORTING to node {} ('{}') map {}, {}, dist {} yd!",
+                    me->GetName().c_str(), me->GetEntry(), uint32(_botclass), uint32(me->GetLevel()), me->GetMapId(), _travel_node_cur->GetWPId(),
+                    _travel_node_cur->GetName().c_str(), uint32(mapid), pos.ToString().c_str(), me->GetExactDist(pos));
+                LOG_ERROR("server.loading", "Bot Pos: {} {} {}", me->GetPositionX(), me->GetPositionY(), me->GetPositionZ());
+            }
+            else
+            {
+                //LOG_DEBUG("npcbots", "Bot {} id {} class {} level {} map {} TELEPORTING to node {} ('{}') map {}, {}, dist {} yd!",
+                LOG_DEBUG("server.loading", "Bot {} id {} class {} level {} map {} TELEPORTING to node {} ('{}') map {}, {}, dist {} yd!",
+                    me->GetName().c_str(), me->GetEntry(), uint32(_botclass), uint32(me->GetLevel()), me->GetMapId(), _travel_node_cur->GetWPId(),
+                    _travel_node_cur->GetName().c_str(), uint32(mapid), pos.ToString().c_str(), me->GetExactDist(pos));
+            }
 
             evadeDelayTimer = 12000;
             me->CastSpell(me, WANDERER_HEARTHSTONE);
@@ -18620,6 +18789,16 @@ void bot_ai::OnBotEnterBattleground()
                 }
             }
         });
+
+        // Ornfelt: Remove arena_prep since otherwise npcbots will be invisible until it's removed
+        if (bg->isArena())
+        {
+            //me->CastSpell(me, SPELL_ARENA_PREPARATION, true);
+            for (MapReference const& ref : me->GetMap()->GetPlayers())
+                if (Player* player = ref.GetSource())
+                    if (player->HasAuraType(SPELL_AURA_ARENA_PREPARATION))
+                        player->RemoveAurasDueToSpell(SPELL_ARENA_PREPARATION);
+        }
 
         SetBotCommandState(BOT_COMMAND_STAY);
         if (startNode)

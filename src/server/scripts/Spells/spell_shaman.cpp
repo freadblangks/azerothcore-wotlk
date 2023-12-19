@@ -474,12 +474,19 @@ class spell_sha_chain_heal : public SpellScript
             // Check if the target has Riptide
             if (AuraEffect* aurEff = GetHitUnit()->GetAuraEffect(SPELL_AURA_PERIODIC_HEAL, SPELLFAMILY_SHAMAN, 0, 0, 0x10, GetCaster()->GetGUID()))
             {
-                riptide = true;
-                // Consume it
-                GetHitUnit()->RemoveAura(aurEff->GetBase());
+                riptide = true; // Set riptide to true for increased healing
+
+                // Check if the caster does NOT have the aura 888888
+                if (!GetCaster()->HasAura(888888))
+                {
+                    // Consume Riptide
+                    GetHitUnit()->RemoveAura(aurEff->GetBase());
+                }
+                // If the caster has the aura 888888, Riptide will not be consumed due to the above check
             }
             firstHeal = false;
         }
+
         // Riptide increases the Chain Heal effect by 25%
         if (riptide)
             SetHitHeal(GetHitHeal() * 1.25f);
@@ -971,9 +978,9 @@ class spell_sha_lava_lash : public SpellScript
         {
             int32 damage = GetEffectValue();
             int32 hitDamage = GetHitDamage();
-            if (caster->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND))
+            if (caster->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND))
             {
-                // Damage is increased by 25% if your off-hand weapon is enchanted with Flametongue.
+                // Damage is increased by 25% if your DINKLE main-hand weapon is enchanted with Flametongue.
                 if (caster->GetAuraEffect(SPELL_AURA_DUMMY, SPELLFAMILY_SHAMAN, 0x200000, 0, 0))
                     AddPct(hitDamage, damage);
                 SetHitDamage(hitDamage);

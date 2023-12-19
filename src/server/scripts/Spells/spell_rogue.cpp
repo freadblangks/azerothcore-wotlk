@@ -27,6 +27,9 @@
 #include "SpellAuraEffects.h"
 #include "SpellMgr.h"
 #include "SpellScript.h"
+#include "SpellAuras.h"
+#include "Player.h"
+
 
 //npcbot
 #include "Creature.h"
@@ -47,6 +50,73 @@ enum RogueSpells
     SPELL_ROGUE_TRICKS_OF_THE_TRADE_DMG_BOOST   = 57933,
     SPELL_ROGUE_TRICKS_OF_THE_TRADE_PROC        = 59628,
 };
+
+class spell_rogue_shadowdance_plus : public SpellScript
+{
+    PrepareSpellScript(spell_rogue_shadowdance_plus);
+
+    void HandleAfterCast()
+    {
+        Unit* caster = GetCaster();
+
+        // Check if the caster is an NPC bot and exclude them
+        if (caster->IsNPCBot())
+            return;
+
+        caster->CastSpell(caster, 920540, true); // Cast spell 920540
+    }
+
+    void Register() override
+    {
+        AfterCast += SpellCastFn(spell_rogue_shadowdance_plus::HandleAfterCast);
+    }
+};
+
+void AddSC_spell_rogue_shadowdance_plus()
+{
+    RegisterSpellScript(spell_rogue_shadowdance_plus);
+}
+
+class spell_rogue_swiftness_strikes : public SpellScript
+{
+    PrepareSpellScript(spell_rogue_swiftness_strikes);
+
+    static const uint32 REQUIRED_AURA_ID = 920019;
+    static const uint32 AURA_ID = 920020;
+    static const uint32 STACK_LIMIT = 12;
+    static const uint32 SPELL_ON_LIMIT = 920021;
+
+    void HandleOnCast()
+    {
+        Unit* caster = GetCaster();
+        if (!caster || caster->IsNPCBot()) // Exclude NPC bots
+            return;
+
+        if (!caster->HasAura(REQUIRED_AURA_ID))
+            return;
+
+        if (urand(1, 100) <= 40)
+        {
+            caster->CastSpell(caster, AURA_ID, true);
+            Aura* aura = caster->GetAura(AURA_ID);
+            if (aura && aura->GetStackAmount() >= STACK_LIMIT)
+            {
+                caster->CastSpell(caster, SPELL_ON_LIMIT, true);
+                aura->Remove();
+            }
+        }
+    }
+
+    void Register() override
+    {
+        OnCast += SpellCastFn(spell_rogue_swiftness_strikes::HandleOnCast);
+    }
+};
+
+void AddSC_spell_rogue_swiftness_strikes()
+{
+    RegisterSpellScript(spell_rogue_swiftness_strikes);
+}
 
 class spell_rog_savage_combat : public AuraScript
 {
@@ -745,6 +815,44 @@ class spell_rog_pickpocket : public SpellScript
     }
 };
 
+class spell_rogue_add_combo_points : public SpellScriptLoader
+{
+public:
+    spell_rogue_add_combo_points() : SpellScriptLoader("spell_rogue_add_combo_points") { }
+
+    class spell_rogue_add_combo_points_SpellScript : public SpellScript
+    {
+        PrepareSpellScript(spell_rogue_add_combo_points_SpellScript);
+
+        void HandleAfterCast()
+        {
+            if (Player* player = GetCaster()->ToPlayer())
+            {
+                if (Unit* target = player->GetSelectedUnit())
+                {
+                    // Retrieve the base points of Effect 1 to determine the number of combo points to add
+                    int32 comboPointsToAdd = GetSpellInfo()->Effects[EFFECT_1].BasePoints;
+
+                    // Add the determined number of combo points to the player's target
+                    player->AddComboPoints(target, comboPointsToAdd);
+                    player->SendComboPoints();
+                }
+            }
+        }
+
+        void Register() override
+        {
+            AfterCast += SpellCastFn(spell_rogue_add_combo_points_SpellScript::HandleAfterCast);
+        }
+    };
+
+    SpellScript* GetSpellScript() const override
+    {
+        return new spell_rogue_add_combo_points_SpellScript();
+    }
+};
+
+
 void AddSC_rogue_spell_scripts()
 {
     RegisterSpellScript(spell_rog_savage_combat);
@@ -761,4 +869,7 @@ void AddSC_rogue_spell_scripts()
     RegisterSpellScript(spell_rog_tricks_of_the_trade);
     RegisterSpellScript(spell_rog_tricks_of_the_trade_proc);
     RegisterSpellScript(spell_rog_pickpocket);
+    RegisterSpellScript(spell_rogue_swiftness_strikes);
+    RegisterSpellScript(spell_rogue_shadowdance_plus);
+    new spell_rogue_add_combo_points();
 }

@@ -171,7 +171,7 @@ enum BattlegroundTimeIntervals
 
 enum BattlegroundStartTimeIntervals
 {
-    BG_START_DELAY_2M               = 120000,               // ms (2 minutes)
+    BG_START_DELAY_2M               = 60000,                // ms (1 minute)
     BG_START_DELAY_1M               = 60000,                // ms (1 minute)
     BG_START_DELAY_30S              = 30000,                // ms (30 seconds)
     BG_START_DELAY_15S              = 15000,                // ms (15 seconds) Used only in arena
@@ -283,7 +283,6 @@ enum BGHonorMode
     BG_HONOR_MODE_NUM
 };
 
-#define BG_AWARD_ARENA_POINTS_MIN_LEVEL 71
 #define ARENA_TIMELIMIT_POINTS_LOSS    -16
 #define ARENA_READY_MARKER_ENTRY 301337
 

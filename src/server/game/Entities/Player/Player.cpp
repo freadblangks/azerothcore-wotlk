@@ -822,26 +822,26 @@ int32 Player::getMaxTimer(MirrorTimerType timer)
 {
     switch (timer)
     {
-        case FATIGUE_TIMER:
-            return MINUTE * IN_MILLISECONDS;
-        case BREATH_TIMER:
-            {
-                if (!IsAlive() || HasAuraType(SPELL_AURA_WATER_BREATHING) || GetSession()->GetSecurity() >= AccountTypes(sWorld->getIntConfig(CONFIG_DISABLE_BREATHING)))
-                    return DISABLED_MIRROR_TIMER;
-                int32 UnderWaterTime = sWorld->getIntConfig(CONFIG_WATER_BREATH_TIMER);
-                AuraEffectList const& mModWaterBreathing = GetAuraEffectsByType(SPELL_AURA_MOD_WATER_BREATHING);
-                for (AuraEffectList::const_iterator i = mModWaterBreathing.begin(); i != mModWaterBreathing.end(); ++i)
-                    AddPct(UnderWaterTime, (*i)->GetAmount());
-                return UnderWaterTime;
-            }
-        case FIRE_TIMER:
-            {
-                if (!IsAlive())
-                    return DISABLED_MIRROR_TIMER;
-                return 2020;
-            }
-        default:
-            return 0;
+    case FATIGUE_TIMER:
+        return MINUTE * IN_MILLISECONDS;
+    case BREATH_TIMER:
+    {
+        if (!IsAlive() || HasAuraType(SPELL_AURA_WATER_BREATHING) || GetSession()->GetSecurity() >= AccountTypes(sWorld->getIntConfig(CONFIG_DISABLE_BREATHING)))
+            return DISABLED_MIRROR_TIMER;
+        int32 UnderWaterTime = sWorld->getIntConfig(CONFIG_WATER_BREATH_TIMER);
+        AuraEffectList const& mModWaterBreathing = GetAuraEffectsByType(SPELL_AURA_MOD_WATER_BREATHING);
+        for (AuraEffectList::const_iterator i = mModWaterBreathing.begin(); i != mModWaterBreathing.end(); ++i)
+            AddPct(UnderWaterTime, (*i)->GetAmount());
+        return UnderWaterTime;
+    }
+    case FIRE_TIMER:
+    {
+        if (!IsAlive())
+            return DISABLED_MIRROR_TIMER;
+        return 2020;
+    }
+    default:
+        return 0;
     }
 }
 
@@ -887,7 +887,7 @@ void Player::HandleDrowning(uint32 time_diff)
     }
 
     // In dark water
-    if (m_MirrorTimerFlags & UNDERWATER_INDARKWATER)
+    if (false && m_MirrorTimerFlags & UNDERWATER_INDARKWATER)
     {
         // Fatigue timer not activated - activate it
         if (m_MirrorTimer[FATIGUE_TIMER] == DISABLED_MIRROR_TIMER)
@@ -1023,7 +1023,7 @@ void Player::setDeathState(DeathState s, bool /*despawn = false*/)
 
     bool cur = IsAlive();
 
-    if (s == JUST_DIED)
+    if (s == DeathState::JustDied)
     {
         if (!cur)
         {
@@ -1038,7 +1038,7 @@ void Player::setDeathState(DeathState s, bool /*despawn = false*/)
 
         clearResurrectRequestData();
 
-        //FIXME: is pet dismissed at dying or releasing spirit? if second, add setDeathState(DEAD) to HandleRepopRequestOpcode and define pet unsummon here with (s == DEAD)
+        //FIXME: is pet dismissed at dying or releasing spirit? if second, add setDeathState(DeathState::Dead) to HandleRepopRequestOpcode and define pet unsummon here with (s == DEAD)
         RemovePet(nullptr, PET_SAVE_NOT_IN_SLOT, true);
 
         // save value before aura remove in Unit::setDeathState
@@ -1058,7 +1058,7 @@ void Player::setDeathState(DeathState s, bool /*despawn = false*/)
         ResetAchievementCriteria(ACHIEVEMENT_CRITERIA_CONDITION_NO_DEATH, 0);
     }
     // xinef: enable passive area auras!
-    else if (s == ALIVE)
+    else if (s == DeathState::Alive)
         ClearUnitState(UNIT_STATE_ISOLATED);
 
     Unit::setDeathState(s);
@@ -1067,7 +1067,7 @@ void Player::setDeathState(DeathState s, bool /*despawn = false*/)
         ArenaSpectator::SendCommand_UInt32Value(FindMap(), GetGUID(), "STA", IsAlive() ? 1 : 0);
 
     // restore resurrection spell id for player after aura remove
-    if (s == JUST_DIED && cur && ressSpellId)
+    if (s == DeathState::JustDied && cur && ressSpellId)
         SetUInt32Value(PLAYER_SELF_RES_SPELL, ressSpellId);
 
     if (IsAlive() && !cur)
@@ -3523,7 +3523,7 @@ void Player::removeSpell(uint32 spell_id, uint8 removeSpecMask, bool onlyTempora
     // pussywizard: remove from spell book (can't be replaced by previous rank, because such spells can't be unlearnt)
     if (!onlyTemporary || ((!spellInfo->HasAttribute(SpellAttr0(SPELL_ATTR0_PASSIVE | SPELL_ATTR0_DO_NOT_DISPLAY)) || !spellInfo->HasAnyAura()) && !spellInfo->HasEffect(SPELL_EFFECT_LEARN_SPELL)))
     {
-        sScriptMgr->OnPlayerForgotSpell(this, spell_id);
+        sScriptMgr->OnPlayerForgotSpell(this, spell_id);        
         SendLearnPacket(spell_id, false);
     }
 }
@@ -4503,7 +4503,7 @@ void Player::ResurrectPlayer(float restore_percent, bool applySickness)
     if (GetSession()->IsARecruiter() || (GetSession()->GetRecruiterId() != 0))
         SetDynamicFlag(UNIT_DYNFLAG_REFER_A_FRIEND);
 
-    setDeathState(ALIVE);
+    setDeathState(DeathState::Alive);
     SetMovement(MOVE_LAND_WALK);
     SetMovement(MOVE_UNROOT);
     SetWaterWalking(false);
@@ -4570,7 +4570,7 @@ void Player::KillPlayer()
 
     StopMirrorTimers();                                     //disable timers(bars)
 
-    setDeathState(CORPSE);
+    setDeathState(DeathState::Corpse);
     //SetUnitFlag(UNIT_FLAG_NOT_IN_PVP);
 
     ReplaceAllDynamicFlags(UNIT_DYNFLAG_NONE);
@@ -5781,8 +5781,8 @@ void Player::CheckAreaExploreAndOutdoor()
 
     if (!areaEntry)
     {
-        LOG_ERROR("entities.player", "Player '{}' ({}) discovered unknown area (x: {} y: {} z: {} map: {})",
-                       GetName(), GetGUID().ToString(), GetPositionX(), GetPositionY(), GetPositionZ(), GetMapId());
+       // LOG_ERROR("entities.player", "Player '{}' ({}) discovered unknown area (x: {} y: {} z: {} map: {})",
+       //                GetName(), GetGUID().ToString(), GetPositionX(), GetPositionY(), GetPositionZ(), GetMapId());
         return;
     }
 
@@ -5790,7 +5790,7 @@ void Player::CheckAreaExploreAndOutdoor()
 
     if (offset >= PLAYER_EXPLORED_ZONES_SIZE)
     {
-        LOG_ERROR("entities.player", "Wrong area flag {} in map data for (X: {} Y: {}) point to field PLAYER_EXPLORED_ZONES_1 + {} ( {} must be < {} ).", areaEntry->flags, GetPositionX(), GetPositionY(), offset, offset, PLAYER_EXPLORED_ZONES_SIZE);
+      //  LOG_ERROR("entities.player", "Wrong area flag {} in map data for (X: {} Y: {}) point to field PLAYER_EXPLORED_ZONES_1 + {} ( {} must be < {} ).", areaEntry->flags, GetPositionX(), GetPositionY(), offset, offset, PLAYER_EXPLORED_ZONES_SIZE);
         return;
     }
 
@@ -6670,6 +6670,22 @@ void Player::_ApplyItemBonuses(ItemTemplate const* proto, uint8 slot, bool apply
     if (only_level_scale && !ssv)
         return;
 
+    uint32 statcount = proto->StatsCount;
+    ReforgeData * reforgeData = NULL;
+    bool decreased = false;
+    if (statcount < MAX_ITEM_PROTO_STATS)
+         {
+        if (Item* invItem = GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+             {
+            if (reforgeMap.find(invItem->GetGUID().GetCounter()) != reforgeMap.end())
+                {
+                reforgeData = &reforgeMap[invItem->GetGUID().GetCounter()];
+                ++statcount;
+                }
+             }
+         }
+    
+
     for (uint8 i = 0; i < MAX_ITEM_PROTO_STATS; ++i)
     {
         uint32 statType = 0;
@@ -6696,12 +6712,25 @@ void Player::_ApplyItemBonuses(ItemTemplate const* proto, uint8 slot, bool apply
         }
         else
         {
-            if (i >= proto->StatsCount)
+            if (i >= statcount)
                 continue;
 
             statType = proto->ItemStat[i].ItemStatType;
             val = proto->ItemStat[i].ItemStatValue;
-        }
+            if (reforgeData)
+                {
+                if (i == statcount - 1)
+                     {
+                    statType = reforgeData->increase;
+                    val = reforgeData->stat_value;
+                    }
+                 else if (!decreased && reforgeData->decrease == statType)
+                     {
+                    val -= reforgeData->stat_value;
+                    decreased = true;
+                    }
+                }
+            }       
 
         if (val == 0)
             continue;
@@ -13376,20 +13405,21 @@ void Player::InitGlyphsForLevel()
     uint8 level = GetLevel();
     uint32 value = 0;
 
-    // 0x3F = 0x01 | 0x02 | 0x04 | 0x08 | 0x10 | 0x20 for 80 level
-    if (level >= 15)
+    // 0x3F = 0x01 | 0x02 | 0x04 | 0x08 | 0x10 | 0x20 for 60 level
+    if (level >= 10) // Adjusted for level 10
         value |= (0x01 | 0x02);
-    if (level >= 30)
+    if (level >= 20) // Adjusted for level 20
         value |= 0x08;
-    if (level >= 50)
+    if (level >= 30) // Adjusted for level 30
         value |= 0x04;
-    if (level >= 70)
+    if (level >= 40) // Adjusted for level 40
         value |= 0x10;
-    if (level >= 80)
+    if (level >= 60) // Adjusted for level 60
         value |= 0x20;
 
     SetUInt32Value(PLAYER_GLYPHS_ENABLED, value);
 }
+
 
 bool Player::isTotalImmune() const
 {
@@ -13719,7 +13749,9 @@ uint32 Player::CalculateTalentsPoints() const
         }
     }
 
+
     talentPointsForLevel += m_extraBonusTalentCount;
+    if (talentPointsForLevel > 51) talentPointsForLevel = 51;
     return uint32(talentPointsForLevel * sWorld->getRate(RATE_TALENT));
 }
 
@@ -15352,6 +15384,8 @@ void Player::ActivateSpec(uint8 spec)
         else
             ++iter;
     }
+
+    sScriptMgr->OnAfterSpecSlotChanged(this, GetActiveSpec());
 }
 
 void Player::LoadActions(PreparedQueryResult result)

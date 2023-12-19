@@ -69,7 +69,7 @@ void WorldSession::HandleRepopRequestOpcode(WorldPacket& recv_data)
     // creatures can kill players
     // so if the server is lagging enough the player can
     // release spirit after he's killed but before he is updated
-    if (GetPlayer()->getDeathState() == JUST_DIED)
+    if (GetPlayer()->getDeathState() == DeathState::JustDied)
     {
         LOG_DEBUG("network", "HandleRepopRequestOpcode: got request after player {} ({}) was killed and before he was updated",
             GetPlayer()->GetName(), GetPlayer()->GetGUID().ToString());
@@ -622,14 +622,6 @@ void WorldSession::HandleBugOpcode(WorldPacket& recv_data)
 
     recv_data >> typelen >> type;
 
-    if (suggestion == 0)
-        LOG_DEBUG("network", "WORLD: Received CMSG_BUG [Bug Report]");
-    else
-        LOG_DEBUG("network", "WORLD: Received CMSG_BUG [Suggestion]");
-
-    LOG_DEBUG("network", "{}", type);
-    LOG_DEBUG("network", "{}", content);
-
     CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_INS_BUG_REPORT);
 
     stmt->SetData(0, type);
@@ -640,8 +632,6 @@ void WorldSession::HandleBugOpcode(WorldPacket& recv_data)
 
 void WorldSession::HandleReclaimCorpseOpcode(WorldPacket& recv_data)
 {
-    LOG_DEBUG("network", "WORLD: Received CMSG_RECLAIM_CORPSE");
-
     ObjectGuid guid;
     recv_data >> guid;
 
@@ -664,7 +654,11 @@ void WorldSession::HandleReclaimCorpseOpcode(WorldPacket& recv_data)
     if (time_t(corpse->GetGhostTime() + _player->GetCorpseReclaimDelay(corpse->GetType() == CORPSE_RESURRECTABLE_PVP)) > time_t(GameTime::GetGameTime().count()))
         return;
 
-    if (!corpse->IsWithinDistInMap(_player, CORPSE_RECLAIM_RADIUS, true))
+    // Use CORPSE_RECLAIM_RADIUS for battlegrounds, otherwise use 120 EDIT: Apparently there's a client limit
+    float resurrectionRadius = _player->InBattleground() ? CORPSE_RECLAIM_RADIUS : 120.0f;
+    
+    // Check if the corpse is within the defined resurrection radius
+    if (!corpse->IsWithinDistInMap(_player, resurrectionRadius, true))
         return;
 
     // resurrect
@@ -676,8 +670,6 @@ void WorldSession::HandleReclaimCorpseOpcode(WorldPacket& recv_data)
 
 void WorldSession::HandleResurrectResponseOpcode(WorldPacket& recv_data)
 {
-    LOG_DEBUG("network", "WORLD: Received CMSG_RESURRECT_RESPONSE");
-
     ObjectGuid guid;
     uint8 status;
     recv_data >> guid;
@@ -857,8 +849,6 @@ void WorldSession::HandleAreaTriggerOpcode(WorldPacket& recv_data)
 
 void WorldSession::HandleUpdateAccountData(WorldPacket& recv_data)
 {
-    LOG_DEBUG("network", "WORLD: Received CMSG_UPDATE_ACCOUNT_DATA");
-
     uint32 type, timestamp, decompressedSize;
     recv_data >> type >> timestamp >> decompressedSize;
 
@@ -912,8 +902,6 @@ void WorldSession::HandleUpdateAccountData(WorldPacket& recv_data)
 
 void WorldSession::HandleRequestAccountData(WorldPacket& recv_data)
 {
-    LOG_DEBUG("network", "WORLD: Received CMSG_REQUEST_ACCOUNT_DATA");
-
     uint32 type;
     recv_data >> type;
 
@@ -950,7 +938,6 @@ void WorldSession::HandleRequestAccountData(WorldPacket& recv_data)
 
 void WorldSession::HandleSetActionButtonOpcode(WorldPacket& recv_data)
 {
-    LOG_DEBUG("network", "WORLD: Received CMSG_SET_ACTION_BUTTON");
     uint8 button;
     uint32 packetData;
     recv_data >> button >> packetData;
@@ -992,26 +979,18 @@ void WorldSession::HandleSetActionButtonOpcode(WorldPacket& recv_data)
 
 void WorldSession::HandleCompleteCinematic(WorldPacket& /*recv_data*/)
 {
-{
-    LOG_DEBUG("network", "WORLD: Received CMSG_COMPLETE_CINEMATIC");
-}
     // If player has sight bound to visual waypoint NPC we should remove it
     GetPlayer()->GetCinematicMgr()->EndCinematic();
 }
 
 void WorldSession::HandleNextCinematicCamera(WorldPacket& /*recv_data*/)
 {
-{
-    LOG_DEBUG("network", "WORLD: Received CMSG_NEXT_CINEMATIC_CAMERA");
-}
     // Sent by client when cinematic actually begun. So we begin the server side process
     GetPlayer()->GetCinematicMgr()->BeginCinematic();
 }
 
 void WorldSession::HandleFeatherFallAck(WorldPacket& recv_data)
 {
-    LOG_DEBUG("network", "WORLD: CMSG_MOVE_FEATHER_FALL_ACK");
-
     // no used
     recv_data.rfinish();                       // prevent warnings spam
 }
@@ -1045,8 +1024,6 @@ void WorldSession::HandleInspectOpcode(WorldPacket& recv_data)
 {
     ObjectGuid guid;
     recv_data >> guid;
-
-    LOG_DEBUG("network", "WORLD: Received CMSG_INSPECT");
 
     Player* player = ObjectAccessor::GetPlayer(*_player, guid);
     if (!player)
@@ -1132,8 +1109,6 @@ void WorldSession::HandleWorldTeleportOpcode(WorldPacket& recv_data)
     recv_data >> PositionY;
     recv_data >> PositionZ;
     recv_data >> Orientation;                               // o (3.141593 = 180 degrees)
-
-    LOG_DEBUG("network", "WORLD: Received CMSG_WORLD_TELEPORT");
 
     if (GetPlayer()->IsInFlight())
     {

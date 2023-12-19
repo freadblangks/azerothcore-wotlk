@@ -27,6 +27,7 @@
 #include "SpellInfo.h"
 #include "SpellMgr.h"
 #include "SpellScript.h"
+#include "Spell.h"
 
 enum WarriorSpells
 {
@@ -75,6 +76,36 @@ enum MiscSpells
     SPELL_PRIEST_RENEWED_HOPE                       = 63944,
     SPELL_GEN_DAMAGE_REDUCTION_AURA                 = 68066,
 };
+
+class spell_warrior_vanguard_legendary : public SpellScript
+{
+    PrepareSpellScript(spell_warrior_vanguard_legendary);
+
+    static constexpr uint32 REQUIRED_AURA_ID = 100249;
+    static constexpr uint32 ADDITIONAL_SPELL_ID = 100250;
+
+    void HandleOnCast()
+    {
+        Unit* caster = GetCaster();
+        if (!caster || caster->IsNPCBot()) // Exclude NPC bots
+            return;
+
+        if (caster->HasAura(REQUIRED_AURA_ID))
+        {
+            caster->CastSpell(caster, ADDITIONAL_SPELL_ID, true);
+        }
+    }
+
+    void Register() override
+    {
+        OnCast += SpellCastFn(spell_warrior_vanguard_legendary::HandleOnCast);
+    }
+};
+
+void AddSC_spell_warrior_vanguard_legendary()
+{
+    RegisterSpellScript(spell_warrior_vanguard_legendary);
+}
 
 class spell_warr_mocking_blow : public SpellScript
 {
@@ -379,6 +410,9 @@ class spell_warr_execute : public SpellScript
 {
     PrepareSpellScript(spell_warr_execute);
 
+    static constexpr uint32 REQUIRED_AURA_ID = 100249;
+    static constexpr uint32 ADDITIONAL_SPELL_ID = 100248;
+
     bool Validate(SpellInfo const* /*spellInfo*/) override
     {
         return ValidateSpellInfo({ SPELL_WARRIOR_EXECUTE, SPELL_WARRIOR_GLYPH_OF_EXECUTION });
@@ -421,8 +455,14 @@ class spell_warr_execute : public SpellScript
 
             int32 bp = GetEffectValue() + int32(rageUsed * spellInfo->Effects[effIndex].DamageMultiplier + caster->GetTotalAttackPowerValue(BASE_ATTACK) * 0.2f);
             caster->CastCustomSpell(target, SPELL_WARRIOR_EXECUTE, &bp, nullptr, nullptr, true, nullptr, nullptr, GetOriginalCaster()->GetGUID());
+            //  logic from spell_warrior_juggernaut_legendary
+            if (caster && !caster->IsNPCBot() && caster->HasAura(REQUIRED_AURA_ID))
+            {
+                caster->CastSpell(caster, ADDITIONAL_SPELL_ID, true);
+            }
         }
     }
+
 
     void Register() override
     {
@@ -634,54 +674,60 @@ class spell_warr_sweeping_strikes : public AuraScript
     bool CheckProc(ProcEventInfo& eventInfo)
     {
         Unit* actor = eventInfo.GetActor();
-        if (!actor)
+        if (!actor || !IsSpellValid(eventInfo.GetSpellInfo(), actor))
         {
             return false;
-        }
-
-        if (SpellInfo const* spellInfo = eventInfo.GetSpellInfo())
-        {
-            switch (spellInfo->Id)
-            {
-                case SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_1:
-                case SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_2:
-                case SPELL_WARRIOR_WHIRLWIND_OFF:
-                    return false;
-                case SPELL_WARRIOR_WHIRLWIND_MAIN:
-                    if (actor->HasSpellCooldown(SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_1))
-                    {
-                        return false;
-                    }
-                    break;
-                default:
-                    break;
-            }
         }
 
         _procTarget = actor->SelectNearbyNoTotemTarget(eventInfo.GetProcTarget());
         return _procTarget != nullptr;
     }
 
+    bool IsSpellValid(SpellInfo const* spellInfo, Unit* actor)
+    {
+        if (!spellInfo)
+            return true;
+
+        switch (spellInfo->Id)
+        {
+        case SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_1:
+        case SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_2:
+        case SPELL_WARRIOR_WHIRLWIND_OFF:
+            return false;
+        case SPELL_WARRIOR_WHIRLWIND_MAIN:
+            return !actor->HasSpellCooldown(SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_1);
+        default:
+            return true;
+        }
+    }
+
     void HandleProc(AuraEffect const* aurEff, ProcEventInfo& eventInfo)
     {
         PreventDefaultAction();
+        Unit* actor = eventInfo.GetActor();
+        Unit* target = GetTarget();
+
+        if (!actor || !target || !_procTarget)
+            return;
+
         if (DamageInfo* damageInfo = eventInfo.GetDamageInfo())
         {
             SpellInfo const* spellInfo = damageInfo->GetSpellInfo();
+            int32 damage = damageInfo->GetUnmitigatedDamage();
+
             if (spellInfo && spellInfo->Id == SPELL_WARRIOR_EXECUTE && !_procTarget->HasAuraState(AURA_STATE_HEALTHLESS_20_PERCENT))
             {
                 // If triggered by Execute (while target is not under 20% hp) deals normalized weapon damage
-                GetTarget()->CastSpell(_procTarget, SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_2, aurEff);
+                target->CastSpell(_procTarget, SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_2, aurEff);
             }
             else
             {
                 if (spellInfo && spellInfo->Id == SPELL_WARRIOR_WHIRLWIND_MAIN)
                 {
-                    eventInfo.GetActor()->AddSpellCooldown(SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_1, 0, 500);
+                    actor->AddSpellCooldown(SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_1, 0, 500);
                 }
 
-                int32 damage = damageInfo->GetUnmitigatedDamage();
-                GetTarget()->CastCustomSpell(_procTarget, SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_1, &damage, 0, 0, true, nullptr, aurEff);
+                target->CastCustomSpell(_procTarget, SPELL_WARRIOR_SWEEPING_STRIKES_EXTRA_ATTACK_1, &damage, 0, 0, true, nullptr, aurEff);
             }
         }
     }
@@ -777,7 +823,7 @@ class spell_warr_vigilance : public AuraScript
     }
 
 private:
-    Unit* _procTarget;
+    Unit* _procTarget = nullptr; // Initialize _procTarget to nullptr here
 };
 
 // 50725 - Vigilance
@@ -922,4 +968,5 @@ void AddSC_warrior_spell_scripts()
     RegisterSpellScript(spell_warr_vigilance);
     RegisterSpellScript(spell_warr_vigilance_trigger);
     RegisterSpellScript(spell_warr_t3_prot_8p_bonus);
+    RegisterSpellScript(spell_warrior_vanguard_legendary);
 }

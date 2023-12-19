@@ -27,6 +27,7 @@
 #include "SpellAuraEffects.h"
 #include "SpellMgr.h"
 
+
 //npcbot
 #include "botmgr.h"
 #include "botspell.h"
@@ -532,10 +533,13 @@ int32 SpellEffectInfo::CalcValue(Unit const* caster, int32 const* bp, Unit const
 
             if (canEffectScale)
             {
-                GtNPCManaCostScalerEntry const* spellScaler = sGtNPCManaCostScalerStore.LookupEntry(_spellInfo->SpellLevel - 1);
-                GtNPCManaCostScalerEntry const* casterScaler = sGtNPCManaCostScalerStore.LookupEntry(caster->GetLevel() - 1);
-                if (spellScaler && casterScaler)
-                    value *= casterScaler->ratio / spellScaler->ratio;
+                CreatureTemplate const* cInfo = caster->ToCreature()->GetCreatureTemplate();
+
+                CreatureBaseStats const* pCBS = sObjectMgr->GetCreatureBaseStats(caster->GetLevel(), caster->getClass());
+                float CBSPowerCreature = pCBS->BaseDamage[cInfo->expansion];
+                CreatureBaseStats const* spellCBS = sObjectMgr->GetCreatureBaseStats(_spellInfo->SpellLevel, caster->getClass());
+                float CBSPowerSpell = spellCBS->BaseDamage[cInfo->expansion];
+                value *= CBSPowerCreature / CBSPowerSpell;
             }
         }
     }
@@ -1585,7 +1589,6 @@ SpellCastResult SpellInfo::CheckLocation(uint32 map_id, uint32 zone_id, uint32 a
         case 2584:                                          // Waiting to Resurrect
         case 22011:                                         // Spirit Heal Channel
         case 22012:                                         // Spirit Heal
-        case 24171:                                         // Resurrection Impact Visual
         case 42792:                                         // Recently Dropped Flag
         case 43681:                                         // Inactive
         case 44535:                                         // Spirit Heal (mana)
@@ -1917,7 +1920,18 @@ SpellCastResult SpellInfo::CheckTarget(Unit const* caster, WorldObject const* ta
     if (!CheckTargetCreatureType(unitTarget))
     {
         if (target->GetTypeId() == TYPEID_PLAYER)
-            return SPELL_FAILED_TARGET_IS_PLAYER;
+        {
+            const Player* playerTarget = target->ToPlayer();
+            if (!playerTarget)
+                return SPELL_FAILED_BAD_TARGETS;
+            //Dinkle: Allow certain spells on certain races
+            if ((Id == 2637 || Id == 18657 || Id == 18658 || Id == 1513 || Id == 14326 || Id == 14327) && playerTarget->GetRaceMask() == 32768)
+                return SPELL_CAST_OK;
+            else if ((Id == 9484 || Id == 9485 || Id == 10955) && playerTarget->GetRaceMask() == 16)
+                return SPELL_CAST_OK;
+            else
+                return SPELL_FAILED_TARGET_IS_PLAYER;
+        }
         else
             return SPELL_FAILED_BAD_TARGETS;
     }

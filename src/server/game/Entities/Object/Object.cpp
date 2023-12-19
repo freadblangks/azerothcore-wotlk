@@ -65,7 +65,7 @@ constexpr float VisibilityDistances[AsUnderlyingType(VisibilityDistanceType::Max
     VISIBILITY_DISTANCE_SMALL,
     VISIBILITY_DISTANCE_LARGE,
     VISIBILITY_DISTANCE_GIGANTIC,
-    MAX_VISIBILITY_DISTANCE
+    VISIBILITY_DISTANCE_INFINITE
 };
 
 Object::Object() : m_PackGUID(sizeof(uint64) + 1)
@@ -336,8 +336,12 @@ void Object::DestroyForPlayer(Player* target, bool onDeath) const
 
 [[nodiscard]] ObjectGuid Object::GetGuidValue(uint16 index) const
 {
+    if (m_uint32Values == nullptr)  // Add this null check
+    {
+        return ObjectGuid::Empty;
+    }
     ASSERT(index + 1 < m_valuesCount || PrintIndexError(index, false));
-    return *((ObjectGuid*) &(m_uint32Values[index]));
+    return *((ObjectGuid*)&(m_uint32Values[index]));
 }
 
 void Object::BuildMovementUpdate(ByteBuffer* data, uint16 flags) const
@@ -1009,6 +1013,10 @@ bool Object::PrintIndexError(uint32 index, bool set) const
 std::string Object::GetDebugInfo() const
 {
     std::stringstream sstr;
+    if (GetGUID().IsEmpty())  // Add this null check
+    {
+        return "Empty GUID";
+    }
     sstr << GetGUID().ToString() + " Entry " << GetEntry();
     return sstr.str();
 }
@@ -1879,13 +1887,11 @@ bool WorldObject::CanSeeOrDetect(WorldObject const* obj, bool ignoreStealth, boo
     return true;
 }
 
+
 bool WorldObject::CanNeverSee(WorldObject const* obj) const
 {
-    if (GetTypeId() == TYPEID_UNIT && obj->GetTypeId() == TYPEID_UNIT)
-        return GetMap() != obj->GetMap() || (!InSamePhase(obj) && ToUnit()->GetVehicleBase() != obj && this != obj->ToUnit()->GetVehicleBase());
     return GetMap() != obj->GetMap() || !InSamePhase(obj);
 }
-
 bool WorldObject::CanDetect(WorldObject const* obj, bool ignoreStealth, bool checkClient, bool checkAlert) const
 {
     WorldObject const* seer = this;
@@ -2963,7 +2969,7 @@ void WorldObject::DestroyForNearbyPlayers()
     }
 }
 
-void WorldObject::UpdateObjectVisibility(bool /*forced*/)
+void WorldObject::UpdateObjectVisibility(bool /*forced*/, bool /*fromUpdate*/)
 {
     //updates object's visibility for nearby players
     Acore::VisibleChangesNotifier notifier(*this);
@@ -2972,7 +2978,28 @@ void WorldObject::UpdateObjectVisibility(bool /*forced*/)
 
 void WorldObject::AddToNotify(uint16 f)
 {
-    m_notifyflags |= f;
+    if (!(m_notifyflags & f))
+        if (Unit* u = ToUnit())
+        {
+            if (f & NOTIFY_VISIBILITY_CHANGED)
+            {
+                uint32 EVENT_VISIBILITY_DELAY = u->FindMap() ? DynamicVisibilityMgr::GetVisibilityNotifyDelay(u->FindMap()->GetEntry()->map_type) : 1000;
+
+                uint32 diff = getMSTimeDiff(u->m_last_notify_mstime, GameTime::GetGameTimeMS().count());
+                if (diff >= EVENT_VISIBILITY_DELAY / 2)
+                    EVENT_VISIBILITY_DELAY /= 2;
+                else
+                    EVENT_VISIBILITY_DELAY -= diff;
+                u->m_delayed_unit_relocation_timer = EVENT_VISIBILITY_DELAY;
+                u->m_last_notify_mstime = GameTime::GetGameTimeMS().count() + EVENT_VISIBILITY_DELAY - 1;
+            }
+            else if (f & NOTIFY_AI_RELOCATION)
+            {
+                u->m_delayed_unit_ai_notify_timer = u->FindMap() ? DynamicVisibilityMgr::GetAINotifyDelay(u->FindMap()->GetEntry()->map_type) : 500;
+            }
+
+            m_notifyflags |= f;
+        }
 }
 
 struct WorldObjectChangeAccumulator

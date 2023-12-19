@@ -3000,6 +3000,8 @@ void Player::RemoveItem(uint8 bag, uint8 slot, bool update, bool swap)
     }
 }
 
+extern void RemoveReforge(Player* player, uint32 itemguid, bool update);
+
 // Common operation need to remove item from inventory without delete in trade, auction, guild bank, mail....
 void Player::MoveItemFromInventory(uint8 bag, uint8 slot, bool update)
 {
@@ -3007,6 +3009,7 @@ void Player::MoveItemFromInventory(uint8 bag, uint8 slot, bool update)
     {
         ItemRemovedQuestCheck(it->GetEntry(), it->GetCount());
         RemoveItem(bag, slot, update);
+        RemoveReforge(this, it->GetGUID().GetCounter(), true);
         UpdateTitansGrip();
         it->SetNotRefundable(this, false);
         it->RemoveFromUpdateQueueOf(this);
@@ -5458,7 +5461,7 @@ bool Player::LoadFromDB(ObjectGuid playerGuid, CharacterDatabaseQueryHolder cons
     // add ghost flag (must be after aura load: PLAYER_FLAGS_GHOST set in aura)
     if (HasPlayerFlag(PLAYER_FLAGS_GHOST))
     {
-        m_deathState = DEAD;
+        m_deathState = DeathState::Dead;
         AddUnitState(UNIT_STATE_ISOLATED);
     }
 

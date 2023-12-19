@@ -198,6 +198,13 @@ typedef std::unordered_map<uint32, PlayerTalent*> PlayerTalentMap;
 typedef std::unordered_map<uint32, PlayerSpell*> PlayerSpellMap;
 typedef std::list<SpellModifier*> SpellModList;
 
+struct ReforgeData
+ {
+    uint32 increase, decrease;
+    int32 stat_value;
+    };
+typedef std::unordered_map<uint32, ReforgeData> ReforgeMapType;
+
 typedef GuidList WhisperListContainer;
 
 struct SpellCooldown
@@ -2356,7 +2363,7 @@ public:
     bool IsVisibleGloballyFor(Player const* player) const;
 
     void GetInitialVisiblePackets(Unit* target);
-    void UpdateObjectVisibility(bool forced = true) override;
+    void UpdateObjectVisibility(bool forced = true, bool fromUpdate = false) override;
     void UpdateVisibilityForPlayer(bool mapChange = false);
     void UpdateVisibilityOf(WorldObject* target);
     void UpdateTriggerVisibility();
@@ -2596,6 +2603,8 @@ public:
     void UpdatePlayerSetting(std::string source, uint8 index, uint32 value);
 
     void SendSystemMessage(std::string_view msg, bool escapeCharacters = false);
+
+    ReforgeMapType reforgeMap; // reforgeMap[iGUID] = ReforgeData
 
     std::string GetDebugInfo() const override;
 
