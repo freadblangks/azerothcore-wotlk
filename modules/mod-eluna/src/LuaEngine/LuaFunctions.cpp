@@ -84,6 +84,9 @@ luaL_Reg GlobalMethods[] =
     { "GetRealmID", &LuaGlobalFunctions::GetRealmID },
     { "GetCoreVersion", &LuaGlobalFunctions::GetCoreVersion },
     { "GetCoreExpansion", &LuaGlobalFunctions::GetCoreExpansion },
+    { "GetStateMap", &LuaGlobalFunctions::GetStateMap },
+    { "GetStateMapId", &LuaGlobalFunctions::GetStateMapId },
+    { "GetStateInstanceId", &LuaGlobalFunctions::GetStateInstanceId },
     { "GetQuest", &LuaGlobalFunctions::GetQuest },
     { "GetPlayerByGUID", &LuaGlobalFunctions::GetPlayerByGUID },
     { "GetPlayerByName", &LuaGlobalFunctions::GetPlayerByName },
@@ -118,6 +121,7 @@ luaL_Reg GlobalMethods[] =
     { "GetActiveGameEvents", &LuaGlobalFunctions::GetActiveGameEvents },
 
     // Boolean
+    { "IsCompatibilityMode", &LuaGlobalFunctions::IsCompatibilityMode },
     { "IsInventoryPos", &LuaGlobalFunctions::IsInventoryPos },
     { "IsEquipmentPos", &LuaGlobalFunctions::IsEquipmentPos },
     { "IsBankPos", &LuaGlobalFunctions::IsBankPos },
@@ -701,7 +705,10 @@ ElunaRegister<Player> PlayerMethods[] =
     { "ModifyMoney", &LuaPlayer::ModifyMoney },
     { "LearnSpell", &LuaPlayer::LearnSpell },
     { "LearnTalent", &LuaPlayer::LearnTalent },
+
+    { "RunCommand", &LuaPlayer::RunCommand },
     { "SetGlyph", &LuaPlayer::SetGlyph },
+    { "GetGlyph", &LuaPlayer::GetGlyph },
 #if !defined(CLASSIC)
     { "RemoveArenaSpellCooldowns", &LuaPlayer::RemoveArenaSpellCooldowns },
 #endif
@@ -831,6 +838,7 @@ ElunaRegister<Creature> CreatureMethods[] =
     { "GetUnitFlags", &LuaCreature::GetUnitFlags },
     { "GetUnitFlagsTwo", &LuaCreature::GetUnitFlagsTwo },
     { "GetExtraFlags", &LuaCreature::GetExtraFlags },
+    { "GetRank", &LuaCreature::GetRank },
 #if defined(CLASSIC) || defined(TBC) || defined(WOTLK)
     { "GetShieldBlockValue", &LuaCreature::GetShieldBlockValue },
 #endif
