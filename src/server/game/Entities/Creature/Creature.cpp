@@ -1613,104 +1613,108 @@ void Creature::SelectLevel(bool changelevel)
     // health
     float healthmod = 1;
 
-    if (IsDungeonBoss() && !GetMap()->IsHeroic() && GetMap()->IsNonRaidDungeon())
-        healthmod = sWorld->getRate(RATE_CREATURE_ELITE_BOSS);
-    else if (IsDungeonBoss() && GetMap()->IsHeroic() && GetMap()->IsNonRaidDungeon())
-        healthmod = sWorld->getRate(RATE_CREATURE_ELITE_BOSS_HEROIC);
-    else if ((IsDungeonBoss() || isWorldBoss()) && GetMap()->IsRaid())
-        healthmod = sWorld->getRate(RATE_CREATURE_ELITE_BOSS_RAID);
-    else
-        healthmod = _GetHealthMod(rank);
-
-    if (sWorld->getBoolConfig(CONFIG_NEW_BALANCE_FOR_CREATURES) && !IsNPCBotOrPet())
+    if (!IsDuringRemoveFromWorld() && FindMap())
     {
-        MapEntry const* mapEntry = sMapStore.LookupEntry(GetMapId());
-        //Classic Content
-        if (mapEntry->Expansion() == CONTENT_1_60)
-        {
-            //Open World
-            if (!GetMap()->IsNonRaidDungeon() && !GetMap()->IsRaid())
-            {
-                //Early Level Nerf
-                if (GetLevel() <= 40)
-                    healthmod *= (0.33 + (0.02 * GetLevel())); //Nerf hp from level 40 to 1 gradually
+        Map* creatureMap = GetMap();
+        if (IsDungeonBoss() && !creatureMap->IsHeroic() && creatureMap->IsNonRaidDungeon())
+            healthmod = sWorld->getRate(RATE_CREATURE_ELITE_BOSS);
+        else if (IsDungeonBoss() && creatureMap->IsHeroic() && creatureMap->IsNonRaidDungeon())
+            healthmod = sWorld->getRate(RATE_CREATURE_ELITE_BOSS_HEROIC);
+        else if ((IsDungeonBoss() || isWorldBoss()) && creatureMap->IsRaid())
+            healthmod = sWorld->getRate(RATE_CREATURE_ELITE_BOSS_RAID);
+        else
+            healthmod = _GetHealthMod(rank);
 
-                //Content Buff
-                if (GetLevel() >= 40)
+        if (sWorld->getBoolConfig(CONFIG_NEW_BALANCE_FOR_CREATURES) && (IsPet() || IsGuardian() || IsControlledByPlayer() || !IsNPCBotOrPet()))
+        {
+            MapEntry const* mapEntry = sMapStore.LookupEntry(GetMapId());
+            //Classic Content
+            if (mapEntry->Expansion() == CONTENT_1_60)
+            {
+                //Open World
+                if (!creatureMap->IsNonRaidDungeon() && !creatureMap->IsRaid())
                 {
-                    healthmod *= (0.6 + (0.010125 * GetLevel())); //Buff hp from level 40 to 60 gradually
+                    //Early Level Nerf
+                    if (GetLevel() <= 40)
+                        healthmod *= (0.33 + (0.02 * GetLevel())); //Nerf hp from level 40 to 1 gradually
+
+                    //Content Buff
+                    if (GetLevel() >= 40)
+                    {
+                        healthmod *= (0.6 + (0.010125 * GetLevel())); //Buff hp from level 40 to 60 gradually
+                    }
+                }
+
+                //Dungeons
+                if (creatureMap->IsNonRaidDungeon())
+                {
+                    //Early Level Nerf
+                    if (GetLevel() <= 40)
+                        healthmod *= (0.33 + (0.02 * GetLevel())); //Nerf hp from level 40 to 1 gradually
+
+                    //Content Buff
+                    if (GetLevel() >= 40)
+                    {
+                        healthmod *= (0.6 + (0.010125 * GetLevel())); //Buff hp from level 40 to 60 gradually
+                    }
+                    healthmod *= 2;
+                }
+
+                //Raids
+                if (creatureMap->IsRaid())
+                {
+                    //Early Level Nerf
+                    if (GetLevel() <= 40)
+                        healthmod *= (0.33 + (0.02 * GetLevel())); //Nerf hp from level 40 to 1 gradually
+
+                    //Content Buff
+                    if (GetLevel() >= 40)
+                    {
+                        healthmod *= (0.6 + (0.010125 * GetLevel())); //Buff hp from level 40 to 60 gradually
+                    }
+                    healthmod *= 1.5;
                 }
             }
 
-            //Dungeons
-            if (GetMap()->IsNonRaidDungeon())
+            //TBC Content
+            if (mapEntry->Expansion() == CONTENT_61_70)
             {
-                //Early Level Nerf
-                if (GetLevel() <= 40)
-                    healthmod *= (0.33 + (0.02 * GetLevel())); //Nerf hp from level 40 to 1 gradually
+                //Open World
+                if (!creatureMap->IsNonRaidDungeon() && !creatureMap->IsRaid())
+                    healthmod *= 1.44;
 
-                //Content Buff
-                if (GetLevel() >= 40)
-                {
-                    healthmod *= (0.6 + (0.010125 * GetLevel())); //Buff hp from level 40 to 60 gradually
-                }
-                healthmod *= 2;
+                //Dungeons
+                if (creatureMap->IsNonRaidDungeon() && !creatureMap->IsHeroic())
+                    healthmod *= 1.44;
+
+                //Dungeons (Heroic)
+                if (creatureMap->IsNonRaidDungeon() && creatureMap->IsHeroic())
+                    healthmod *= 1.66;
+
+                //Raids
+                if (creatureMap->IsRaid())
+                    healthmod *= 1.11;
             }
 
-            //Raids
-            if (GetMap()->IsRaid())
+            //WotLK Content
+            if (mapEntry->Expansion() == CONTENT_71_80)
             {
-                //Early Level Nerf
-                if (GetLevel() <= 40)
-                    healthmod *= (0.33 + (0.02 * GetLevel())); //Nerf hp from level 40 to 1 gradually
+                //Open World
+                if (!creatureMap->IsNonRaidDungeon() && !creatureMap->IsRaid())
+                    healthmod *= 1.66;
 
-                //Content Buff
-                if (GetLevel() >= 40)
-                {
-                    healthmod *= (0.6 + (0.010125 * GetLevel())); //Buff hp from level 40 to 60 gradually
-                }
-                healthmod *= 1.5;
+                //Dungeons
+                if (creatureMap->IsNonRaidDungeon() && !creatureMap->IsHeroic())
+                    healthmod *= 1.66;
+
+                //Dungeons (Heroic)
+                if (creatureMap->IsNonRaidDungeon() && creatureMap->IsHeroic())
+                    healthmod *= 1.88;
+
+                //Raids
+                if (creatureMap->IsRaid())
+                    healthmod *= 1.22;
             }
-        }
-
-        //TBC Content
-        if (mapEntry->Expansion() == CONTENT_61_70)
-        {
-            //Open World
-            if (!GetMap()->IsNonRaidDungeon() && !GetMap()->IsRaid())
-                healthmod *= 1.44;
-
-            //Dungeons
-            if (GetMap()->IsNonRaidDungeon() && !GetMap()->IsHeroic())
-                healthmod *= 1.44;
-
-            //Dungeons (Heroic)
-            if (GetMap()->IsNonRaidDungeon() && GetMap()->IsHeroic())
-                healthmod *= 1.66;
-
-            //Raids
-            if (GetMap()->IsRaid())
-                healthmod *= 1.11;
-        }
-
-        //WotLK Content
-        if (mapEntry->Expansion() == CONTENT_71_80)
-        {
-            //Open World
-            if (!GetMap()->IsNonRaidDungeon() && !GetMap()->IsRaid())
-                healthmod *= 1.66;
-
-            //Dungeons
-            if (GetMap()->IsNonRaidDungeon() && !GetMap()->IsHeroic())
-                healthmod *= 1.66;
-
-            //Dungeons (Heroic)
-            if (GetMap()->IsNonRaidDungeon() && GetMap()->IsHeroic())
-                healthmod *= 1.88;
-
-            //Raids
-            if (GetMap()->IsRaid())
-                healthmod *= 1.22;
         }
     }
 
@@ -1972,14 +1976,14 @@ bool Creature::LoadCreatureFromDB(ObjectGuid::LowType spawnId, Map* map, bool ad
             else
                 curhealth = uint32(curhealth * _GetHealthMod(GetCreatureTemplate()->rank));
 
-            if (sWorld->getBoolConfig(CONFIG_NEW_BALANCE_FOR_CREATURES) && !IsNPCBotOrPet())
+            if (sWorld->getBoolConfig(CONFIG_NEW_BALANCE_FOR_CREATURES) && (IsPet() || IsGuardian() || IsControlledByPlayer() || !IsNPCBotOrPet()))
             {
-                MapEntry const* mapEntry = sMapStore.LookupEntry(GetMapId());
+                MapEntry const* mapEntry = sMapStore.LookupEntry(map->GetId());
                 //Classic Content
                 if (mapEntry->Expansion() == CONTENT_1_60)
                 {
                     //Open World
-                    if (!GetMap()->IsNonRaidDungeon() && !GetMap()->IsRaid())
+                    if (!map->IsNonRaidDungeon() && !map->IsRaid())
                     {
                         //Early Level Nerf
                         if (GetLevel() <= 40)
@@ -1993,7 +1997,7 @@ bool Creature::LoadCreatureFromDB(ObjectGuid::LowType spawnId, Map* map, bool ad
                     }
 
                     //Dungeons
-                    if (GetMap()->IsNonRaidDungeon())
+                    if (map->IsNonRaidDungeon())
                     {
                         //Early Level Nerf
                         if (GetLevel() <= 40)
@@ -2008,7 +2012,7 @@ bool Creature::LoadCreatureFromDB(ObjectGuid::LowType spawnId, Map* map, bool ad
                     }
 
                     //Raids
-                    if (GetMap()->IsRaid())
+                    if (map->IsRaid())
                     {
                         //Early Level Nerf
                         if (GetLevel() <= 40)
@@ -2027,19 +2031,19 @@ bool Creature::LoadCreatureFromDB(ObjectGuid::LowType spawnId, Map* map, bool ad
                 if (mapEntry->Expansion() == CONTENT_61_70)
                 {
                     //Open World
-                    if (!GetMap()->IsNonRaidDungeon() && !GetMap()->IsRaid())
+                    if (!map->IsNonRaidDungeon() && !map->IsRaid())
                         curhealth *= 1.44;
 
                     //Dungeons
-                    if (GetMap()->IsNonRaidDungeon() && !GetMap()->IsHeroic())
+                    if (map->IsNonRaidDungeon() && !map->IsHeroic())
                         curhealth *= 1.44;
 
                     //Dungeons (Heroic)
-                    if (GetMap()->IsNonRaidDungeon() && GetMap()->IsHeroic())
+                    if (map->IsNonRaidDungeon() && map->IsHeroic())
                         curhealth *= 1.66;
 
                     //Raids
-                    if (GetMap()->IsRaid())
+                    if (map->IsRaid())
                         curhealth *= 1.11;
                 }
 
@@ -2047,19 +2051,19 @@ bool Creature::LoadCreatureFromDB(ObjectGuid::LowType spawnId, Map* map, bool ad
                 if (mapEntry->Expansion() == CONTENT_71_80)
                 {
                     //Open World
-                    if (!GetMap()->IsNonRaidDungeon() && !GetMap()->IsRaid())
+                    if (!map->IsNonRaidDungeon() && !map->IsRaid())
                         curhealth *= 1.66;
 
                     //Dungeons
-                    if (GetMap()->IsNonRaidDungeon() && !GetMap()->IsHeroic())
+                    if (map->IsNonRaidDungeon() && !map->IsHeroic())
                         curhealth *= 1.66;
 
                     //Dungeons (Heroic)
-                    if (GetMap()->IsNonRaidDungeon() && GetMap()->IsHeroic())
+                    if (map->IsNonRaidDungeon() && map->IsHeroic())
                         curhealth *= 1.88;
 
                     //Raids
-                    if (GetMap()->IsRaid())
+                    if (map->IsRaid())
                         curhealth *= 1.22;
                 }
             }
@@ -4291,14 +4295,14 @@ bool Creature::LoadBotCreatureFromDB(ObjectGuid::LowType spawnId, Map* map, bool
             else
                 curhealth = uint32(curhealth * _GetHealthMod(GetCreatureTemplate()->rank));
 
-            if (sWorld->getBoolConfig(CONFIG_NEW_BALANCE_FOR_CREATURES) && !IsNPCBotOrPet())
+            if (sWorld->getBoolConfig(CONFIG_NEW_BALANCE_FOR_CREATURES) && IsAlive() && (IsPet() || IsGuardian() || IsControlledByPlayer() || !IsNPCBotOrPet()))
             {
-                MapEntry const* mapEntry = sMapStore.LookupEntry(GetMapId());
+                MapEntry const* mapEntry = sMapStore.LookupEntry(map->GetId());
                 //Classic Content
                 if (mapEntry->Expansion() == CONTENT_1_60)
                 {
                     //Open World
-                    if (!GetMap()->IsNonRaidDungeon() && !GetMap()->IsRaid())
+                    if (!map->IsNonRaidDungeon() && !map->IsRaid())
                     {
                         //Early Level Nerf
                         if (GetLevel() <= 40)
@@ -4312,7 +4316,7 @@ bool Creature::LoadBotCreatureFromDB(ObjectGuid::LowType spawnId, Map* map, bool
                     }
 
                     //Dungeons
-                    if (GetMap()->IsNonRaidDungeon())
+                    if (map->IsNonRaidDungeon())
                     {
                         //Early Level Nerf
                         if (GetLevel() <= 40)
@@ -4327,7 +4331,7 @@ bool Creature::LoadBotCreatureFromDB(ObjectGuid::LowType spawnId, Map* map, bool
                     }
 
                     //Raids
-                    if (GetMap()->IsRaid())
+                    if (map->IsRaid())
                     {
                         //Early Level Nerf
                         if (GetLevel() <= 40)
@@ -4346,19 +4350,19 @@ bool Creature::LoadBotCreatureFromDB(ObjectGuid::LowType spawnId, Map* map, bool
                 if (mapEntry->Expansion() == CONTENT_61_70)
                 {
                     //Open World
-                    if (!GetMap()->IsNonRaidDungeon() && !GetMap()->IsRaid())
+                    if (!map->IsNonRaidDungeon() && !map->IsRaid())
                         curhealth *= 1.44;
 
                     //Dungeons
-                    if (GetMap()->IsNonRaidDungeon() && !GetMap()->IsHeroic())
+                    if (map->IsNonRaidDungeon() && !map->IsHeroic())
                         curhealth *= 1.44;
 
                     //Dungeons (Heroic)
-                    if (GetMap()->IsNonRaidDungeon() && GetMap()->IsHeroic())
+                    if (map->IsNonRaidDungeon() && map->IsHeroic())
                         curhealth *= 1.66;
 
                     //Raids
-                    if (GetMap()->IsRaid())
+                    if (map->IsRaid())
                         curhealth *= 1.11;
                 }
 
@@ -4366,19 +4370,19 @@ bool Creature::LoadBotCreatureFromDB(ObjectGuid::LowType spawnId, Map* map, bool
                 if (mapEntry->Expansion() == CONTENT_71_80)
                 {
                     //Open World
-                    if (!GetMap()->IsNonRaidDungeon() && !GetMap()->IsRaid())
+                    if (!map->IsNonRaidDungeon() && !map->IsRaid())
                         curhealth *= 1.66;
 
                     //Dungeons
-                    if (GetMap()->IsNonRaidDungeon() && !GetMap()->IsHeroic())
+                    if (map->IsNonRaidDungeon() && !map->IsHeroic())
                         curhealth *= 1.66;
 
                     //Dungeons (Heroic)
-                    if (GetMap()->IsNonRaidDungeon() && GetMap()->IsHeroic())
+                    if (map->IsNonRaidDungeon() && map->IsHeroic())
                         curhealth *= 1.88;
 
                     //Raids
-                    if (GetMap()->IsRaid())
+                    if (map->IsRaid())
                         curhealth *= 1.22;
                 }
             }

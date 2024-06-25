@@ -1201,30 +1201,34 @@ void Creature::CalculateMinMaxDamage(WeaponAttackType attType, bool normalized, 
     minDamage = ((weaponMinDamage + baseValue) * dmgMultiplier * basePct + totalValue) * totalPct;
     maxDamage = ((weaponMaxDamage + baseValue) * dmgMultiplier * basePct + totalValue) * totalPct;
 
-    MapEntry const* mapEntry = sMapStore.LookupEntry(GetMapId());
     //Classic Early Level Nerf
     if (sWorld->getBoolConfig(CONFIG_NEW_BALANCE_FOR_CREATURES))
     {
-        if (GetTypeId() == TYPEID_UNIT && (!ToCreature()->IsPet() || !ToCreature()->IsGuardian() || !ToCreature()->IsControlledByPlayer() || !IsNPCBotOrPet()))
+        if (!IsDuringRemoveFromWorld() && FindMap())
         {
-            if (mapEntry->Expansion() == CONTENT_1_60 && GetLevel() <= 40)
+            Map* creatureMap = GetMap();
+            MapEntry const* mapEntry = sMapStore.LookupEntry(GetMapId());
+            if (GetTypeId() == TYPEID_UNIT && (!ToCreature()->IsPet() || !ToCreature()->IsGuardian() || !ToCreature()->IsControlledByPlayer() || !IsNPCBotOrPet()))
             {
-                minDamage *= (0.2 + (0.02 * GetLevel()));
-                maxDamage *= (0.2 + (0.02 * GetLevel()));
-            }
+                if (mapEntry->Expansion() == CONTENT_1_60 && GetLevel() <= 40)
+                {
+                    minDamage *= (0.2 + (0.02 * GetLevel()));
+                    maxDamage *= (0.2 + (0.02 * GetLevel()));
+                }
 
-            //TBC Buff
-            if (mapEntry->Expansion() == CONTENT_61_70 && !GetMap()->IsNonRaidDungeon() && !GetMap()->IsRaid())
-            {
-                minDamage *= 1.33;
-                maxDamage *= 1.33;
-            }
+                //TBC Buff
+                if (mapEntry->Expansion() == CONTENT_61_70 && !creatureMap->IsNonRaidDungeon() && !creatureMap->IsRaid())
+                {
+                    minDamage *= 1.33;
+                    maxDamage *= 1.33;
+                }
 
-            //WotLK Buff
-            if (mapEntry->Expansion() == CONTENT_71_80 && !GetMap()->IsNonRaidDungeon() && !GetMap()->IsRaid())
-            {
-                minDamage *= 1.66;
-                maxDamage *= 1.66;
+                //WotLK Buff
+                if (mapEntry->Expansion() == CONTENT_71_80 && !creatureMap->IsNonRaidDungeon() && !creatureMap->IsRaid())
+                {
+                    minDamage *= 1.66;
+                    maxDamage *= 1.66;
+                }
             }
         }
     }

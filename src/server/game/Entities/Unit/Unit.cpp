@@ -12325,20 +12325,24 @@ uint32 Unit::SpellDamageBonusDone(Unit* victim, SpellInfo const* spellProto, uin
 
     if (sWorld->getBoolConfig(CONFIG_NEW_BALANCE_FOR_CREATURES))
     {
-        MapEntry const* mapEntry = sMapStore.LookupEntry(GetMapId());
-        //Classic Early Level Nerf
-        if (GetTypeId() == TYPEID_UNIT && (!ToCreature()->IsPet() || !ToCreature()->IsGuardian() || !ToCreature()->IsControlledByPlayer() || !IsNPCBotOrPet()))
+        if (!IsDuringRemoveFromWorld() && FindMap())
         {
-            if (mapEntry->Expansion() == CONTENT_1_60 && GetLevel() <= 40)
-                DoneTotalMod *= (0.2 + (0.02 * GetLevel()));
+            Map* creatureMap = GetMap();
+            MapEntry const* mapEntry = sMapStore.LookupEntry(GetMapId());
+            //Classic Early Level Nerf
+            if (GetTypeId() == TYPEID_UNIT && (!ToCreature()->IsPet() || !ToCreature()->IsGuardian() || !ToCreature()->IsControlledByPlayer() || !IsNPCBotOrPet()))
+            {
+                if (mapEntry->Expansion() == CONTENT_1_60 && GetLevel() <= 40)
+                    DoneTotalMod *= (0.2 + (0.02 * GetLevel()));
 
-            //TBC Buff
-            if (mapEntry->Expansion() == CONTENT_61_70 && !GetMap()->IsNonRaidDungeon() && !GetMap()->IsRaid())
-                DoneTotalMod *= 1.33;
+                //TBC Buff
+                if (mapEntry->Expansion() == CONTENT_61_70 && !GetMap()->IsNonRaidDungeon() && !GetMap()->IsRaid())
+                    DoneTotalMod *= 1.33;
 
-            //WotLK Buff
-            if (mapEntry->Expansion() == CONTENT_71_80 && !GetMap()->IsNonRaidDungeon() && !GetMap()->IsRaid())
-                DoneTotalMod *= 1.66;
+                //WotLK Buff
+                if (mapEntry->Expansion() == CONTENT_71_80 && !GetMap()->IsNonRaidDungeon() && !GetMap()->IsRaid())
+                    DoneTotalMod *= 1.66;
+            }
         }
     }
 
