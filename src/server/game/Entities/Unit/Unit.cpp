@@ -1301,7 +1301,14 @@ SpellCastResult Unit::CastSpell(Unit* victim, uint32 spellId, TriggerCastFlags t
     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
     if (!spellInfo)
     {
-        LOG_ERROR("entities.unit", "CastSpell: unknown spell {} by caster {}", spellId, GetGUID().ToString());
+        if (spellId == 7614 || spellId == 7547 || spellId == 7542)
+        {
+            LOG_INFO("entities.unit", "NPC Bots Cast unknown spell {} by caster {}", spellId, GetGUID().ToString());
+        }
+        else
+        {
+            LOG_ERROR("entities.unit", "CastSpell: unknown spell {} by caster {}", spellId, GetGUID().ToString());
+        }
         return SPELL_FAILED_SPELL_UNAVAILABLE;
     }
 
@@ -1351,7 +1358,14 @@ SpellCastResult Unit::CastCustomSpell(uint32 spellId, CustomSpellValues const& v
     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
     if (!spellInfo)
     {
-        LOG_ERROR("entities.unit", "CastSpell: unknown spell {} by caster {}", spellId, GetGUID().ToString());
+        if (spellId == 7614 || spellId == 7547 || spellId == 7542)
+        {
+            LOG_INFO("entities.unit", "NPC Bots Cast unknown spell {} by caster {}", spellId, GetGUID().ToString());
+        }
+        else
+        {
+            LOG_ERROR("entities.unit", "CastSpell: unknown spell {} by caster {}", spellId, GetGUID().ToString());
+        }
         return SPELL_FAILED_SPELL_UNAVAILABLE;
     }
 
@@ -1366,7 +1380,14 @@ SpellCastResult Unit::CastSpell(float x, float y, float z, uint32 spellId, bool 
     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
     if (!spellInfo)
     {
-        LOG_ERROR("entities.unit", "CastSpell: unknown spell {} by caster {}", spellId, GetGUID().ToString());
+        if (spellId == 7614 || spellId == 7547 || spellId == 7542)
+        {
+            LOG_INFO("entities.unit", "NPC Bots Cast unknown spell {} by caster {}", spellId, GetGUID().ToString());
+        }
+        else
+        {
+            LOG_ERROR("entities.unit", "CastSpell: unknown spell {} by caster {}", spellId, GetGUID().ToString());
+        }
         return SPELL_FAILED_SPELL_UNAVAILABLE;
     }
 
@@ -1381,7 +1402,14 @@ SpellCastResult Unit::CastSpell(GameObject* go, uint32 spellId, bool triggered, 
     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
     if (!spellInfo)
     {
-        LOG_ERROR("entities.unit", "CastSpell: unknown spell {} by caster {}", spellId, GetGUID().ToString());
+        if (spellId == 7614 || spellId == 7547 || spellId == 7542)
+        {
+            LOG_INFO("entities.unit", "NPC Bots Cast unknown spell {} by caster {}", spellId, GetGUID().ToString());
+        }
+        else
+        {
+            LOG_ERROR("entities.unit", "CastSpell: unknown spell {} by caster {}", spellId, GetGUID().ToString());
+        }
         return SPELL_FAILED_SPELL_UNAVAILABLE;
     }
 
