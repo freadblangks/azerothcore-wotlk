@@ -9,4 +9,5 @@ UPDATE npc_trainer SET MoneyCost=100000000 WHERE SpellID=34091;
 DELETE FROM npc_trainer WHERE SpellID=23214;
 DELETE FROM npc_trainer WHERE SpellID=34767;
 DELETE FROM npc_trainer WHERE SpellID=23161;
- 
+DELETE FROM npc_trainer WHERE SpellID=13819; # Delete Summon Warhorse from trainer - it is a free reward from a quest instead
+DELETE FROM npc_trainer WHERE SpellID=13820; # Delete Summon Warhorse from more trainers
