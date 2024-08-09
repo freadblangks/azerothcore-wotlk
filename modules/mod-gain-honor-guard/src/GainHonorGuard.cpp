@@ -107,7 +107,7 @@ public:
         player->UpdateHonorFields();
 
         //Determine level that is gray
-        const uint8 k_level = player->getLevel();
+        const uint8 k_level = player->GetLevel();
         const uint8 k_grey = Acore::XP::GetGrayLevel(k_level);
 
         // If guard or elite is grey to the player then no honor rewarded
@@ -195,7 +195,7 @@ public:
             return;
 
         const int groupsize = GetNumInGroup(player); //Determine if it was a gang beatdown
-        const uint8 v_level = killed->getLevel();
+        const uint8 v_level = killed->GetLevel();
 
 
         if (SplitInGroup && player->GetGroup())
