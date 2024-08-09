@@ -187,6 +187,7 @@ enum WorldBoolConfigs
     CONFIG_ALLOWS_RANK_MOD_FOR_PET_HEALTH,
     CONFIG_NEW_BALANCE_FOR_CREATURES,
     CONFIG_MUNCHING_BLIZZLIKE,
+    CONFIG_ENABLE_DAZE,
     BOOL_CONFIG_VALUE_COUNT
 };
 
@@ -569,9 +570,6 @@ public:
     [[nodiscard]] virtual uint16 GetConfigMaxSkillValue() const = 0;
     virtual void SetInitialWorldSettings() = 0;
     virtual void LoadConfigSettings(bool reload = false) = 0;
-    virtual void SendWorldText(uint32 string_id, ...) = 0;
-    virtual void SendWorldTextOptional(uint32 string_id, uint32 flag, ...) = 0;
-    virtual void SendGlobalText(const char* text, WorldSession* self) = 0;
     virtual void SendGMText(uint32 string_id, ...) = 0;
     virtual void SendGlobalMessage(WorldPacket const* packet, WorldSession* self = nullptr, TeamId teamId = TEAM_NEUTRAL) = 0;
     virtual void SendGlobalGMMessage(WorldPacket const* packet, WorldSession* self = nullptr, TeamId teamId = TEAM_NEUTRAL) = 0;

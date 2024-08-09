@@ -3156,7 +3156,7 @@ uint32 Creature::GetShieldBlockValue() const
     }
     //end npcbot
 
-    return (getLevel() / 2 + uint32(GetStat(STAT_STRENGTH) / 20));
+    return (GetLevel() / 2 + uint32(GetStat(STAT_STRENGTH) / 20));
 }
 
 void Creature::SetInCombatWithZone()
