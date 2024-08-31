@@ -31,9 +31,9 @@ public:
             {
                 uint32 loc = player->GetSession()->GetSessionDbLocaleIndex();
                 if (loc == 3)
-                    ChatHandler(player->GetSession()).PSendSysMessage("Es ist Wochenende! Deine Erfahrung wurde auf %g gesetzt.", GetExperienceRate(player));
+                    ChatHandler(player->GetSession()).PSendSysMessage("Es ist Wochenende! Deine Erfahrung wurde auf {} gesetzt.", GetExperienceRate(player));
                 else
-                    ChatHandler(player->GetSession()).PSendSysMessage("It's the weekend! Your XP rate has been set to %g.", GetExperienceRate(player));
+                    ChatHandler(player->GetSession()).PSendSysMessage("It's the weekend! Your XP rate has been set to {}.", GetExperienceRate(player));
             }
             else
             {
