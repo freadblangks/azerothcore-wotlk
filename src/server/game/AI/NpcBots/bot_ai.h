@@ -82,16 +82,6 @@ class bot_ai : public CreatureAI
                 UnsummonCreature(c, save);
         }
 
-        virtual void ResummonAll() {}
-        void ResummonCreature(Creature* creature);
-        void ResummonPet();
-        template<typename C>
-        void ResummonCreatures(C const& container)
-        {
-            for (auto c : container)
-                ResummonCreature(c);
-        }
-
         virtual void OnBotDamageTaken(Unit* /*attacker*/, uint32 /*damage*/, CleanDamage const* /*cleanDamage*/, DamageEffectType /*damagetype*/, SpellInfo const* /*spellInfo*/) {}
         virtual void OnBotDamageDealt(Unit* /*victim*/, uint32 /*damage*/, CleanDamage const* /*cleanDamage*/, DamageEffectType /*damagetype*/, SpellInfo const* /*spellInfo*/) {}
         virtual void OnBotDispelDealt(Unit* /*dispelled*/, uint8 /*num*/) {}
@@ -800,9 +790,14 @@ class bot_ai : public CreatureAI
                     uint32 baseSpell;
                 } spellCastParams;
 
+                struct
+                {
+                    uint64 targetGuid;
+                } pullParams;
+
             } params;
 
-            explicit BotOrder(BotOrderTypes order_type) : _type(order_type)
+            explicit BotOrder(BotOrderTypes order_type, uint32 timeout_sec = 10) : _type(order_type), _timeout(time(0) + timeout_sec)
             {
                 memset((char*)(&params), 0, sizeof(params));
             }
@@ -814,10 +809,11 @@ class bot_ai : public CreatureAI
 
         private:
             BotOrderTypes _type;
+            time_t _timeout;
         };
 
         bool HasOrders() const { return !_orders.empty(); }
-        bool IsLastOrder(BotOrderTypes order_type, uint32 param1) const;
+        bool IsLastOrder(BotOrderTypes order_type, uint32 param1 = 0, ObjectGuid guidparam1 = ObjectGuid::Empty) const;
         std::size_t GetOrdersCount() const { return _orders.size(); }
         bool AddOrder(BotOrder&& order);
         void CancelOrder(BotOrder const& order);

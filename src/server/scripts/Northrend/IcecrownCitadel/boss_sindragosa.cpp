@@ -358,7 +358,7 @@ public:
 
         void KilledUnit(Unit* victim) override
         {
-            if (victim->GetTypeId() == TYPEID_PLAYER)
+            if (victim->IsPlayer())
                 Talk(SAY_KILL);
         }
 
@@ -485,7 +485,7 @@ public:
 
         void SpellHitTarget(Unit* target, SpellInfo const* spell) override
         {
-            if (target->GetTypeId() == TYPEID_PLAYER)
+            if (target->IsPlayer())
                 if (uint32 spellId = sSpellMgr->GetSpellIdForDifficulty(70127, me))
                     if (spellId == spell->Id)
                         if (Aura const* mysticBuffet = target->GetAura(spell->Id))
@@ -804,7 +804,7 @@ class spell_sindragosa_s_fury : public SpellScript
     {
         PreventHitDefaultEffect(effIndex);
 
-        if (!GetHitUnit()->IsAlive() || (GetHitUnit()->GetTypeId() == TYPEID_PLAYER && GetHitUnit()->ToPlayer()->IsGameMaster()) || !_targetCount)
+        if (!GetHitUnit()->IsAlive() || (GetHitUnit()->IsPlayer() && GetHitUnit()->ToPlayer()->IsGameMaster()) || !_targetCount)
             return;
 
         float resistance = float(GetHitUnit()->GetResistance(SpellSchoolMask(GetSpellInfo()->SchoolMask)));

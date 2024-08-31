@@ -1588,6 +1588,8 @@ bool bot_pet_ai::CheckAttackTarget()
 
         return false;
     }
+    if (petOwner->GetBotAI()->IsLastOrder(BOT_ORDER_PULL, 0, opponent->GetGUID()))
+        return false;
 
     if (reset)
         SetBotCommandState(BOT_COMMAND_COMBATRESET);//reset AttackStart()
@@ -2291,7 +2293,7 @@ void bot_pet_ai::IsSummonedBy(WorldObject* summoner)
     //myType = petOwner->GetBotAI()->GetAIMiscValue(BOTAI_MISC_PET_TYPE);
     //ASSERT(myType);
     me->setActive(true);
-    me->SetUnitFlag(UNIT_FLAG_PLAYER_CONTROLLED);
+    //me->SetUnitFlag(UNIT_FLAG_PLAYER_CONTROLLED);
     ASSERT(!me->GetBotAI());
     ASSERT(!me->GetBotPetAI());
     me->SetBotPetAI(this);

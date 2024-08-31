@@ -4854,18 +4854,24 @@ void SpellMgr::LoadSpellInfoCorrections()
         spellInfo->Effects[EFFECT_0].RadiusEntry = sSpellRadiusStore.LookupEntry(EFFECT_RADIUS_20_YARDS);
     });
 
-    // Random Periodic
-    ApplySpellFix({ 40867 }, [](SpellInfo* spellInfo)
-    {
-        spellInfo->Effects[EFFECT_0].Amplitude = 9000;
-    });
-
     // Flame Wave
     ApplySpellFix({ 33800 }, [](SpellInfo* spellInfo)
     {
         spellInfo->Effects[EFFECT_1].Effect = SPELL_EFFECT_APPLY_AURA;
         spellInfo->Effects[EFFECT_1].ApplyAuraName = SPELL_AURA_PERIODIC_TRIGGER_SPELL;
         spellInfo->Effects[EFFECT_1].Amplitude = 500;
+    });
+
+    // Chromatic Resistance Aura
+    ApplySpellFix({ 41453 }, [](SpellInfo* spellInfo)
+    {
+        spellInfo->Effects[EFFECT_0].MiscValue = 124;
+    });
+
+    // Power of the Guardian
+    ApplySpellFix({ 28142, 28143, 28144, 28145 }, [](SpellInfo* spellInfo)
+    {
+        spellInfo->AttributesEx3 |= SPELL_ATTR3_ALLOW_AURA_WHILE_DEAD;
     });
 
     for (uint32 i = 0; i < GetSpellInfoStoreSize(); ++i)

@@ -39,6 +39,7 @@
 #include "PathGenerator.h"
 #include "PointMovementGenerator.h"
 #include "ScriptedGossip.h"
+#include "ScriptMgr.h"
 #include "SpellAuraEffects.h"
 #include "TemporarySummon.h"
 #include "Transport.h"
@@ -881,30 +882,30 @@ bool bot_ai::doCast(Unit* victim, uint32 spellId, TriggerCastFlags flags)
         return false;
 
     //for debug only
-    if (victim->isType(TYPEMASK_UNIT) && victim->isDead() &&
-        !(m_botSpellInfo->AttributesEx2 & SPELL_ATTR2_ALLOW_DEAD_TARGET) &&
-        !m_botSpellInfo->HasEffect(SPELL_EFFECT_RESURRECT) &&
-        !m_botSpellInfo->HasEffect(SPELL_EFFECT_RESURRECT_NEW) &&
-        !m_botSpellInfo->HasEffect(SPELL_EFFECT_SELF_RESURRECT))
+    if (victim->isType(TYPEMASK_UNIT) && victim->isDead())
     {
-        LOG_DEBUG("npcbots", "bot_ai::doCast(): {} (bot class {}) tried to cast spell {} on a dead target {}",
-            me->GetName().c_str(), _botclass, spellId, victim->GetName().c_str());
+        if (victim->getDeathState() == DeathState::Dead)
+            LOG_DEBUG("npcbots", "bot_ai::doCast(): {} (bot class {}) tried to cast spell {} on a DEAD target {}", me->GetName(), _botclass, spellId, victim->GetName());
+        else if (!(m_botSpellInfo->AttributesEx2 & SPELL_ATTR2_ALLOW_DEAD_TARGET) &&
+            !m_botSpellInfo->HasEffect(SPELL_EFFECT_RESURRECT) &&
+            !m_botSpellInfo->HasEffect(SPELL_EFFECT_RESURRECT_NEW) &&
+            !m_botSpellInfo->HasEffect(SPELL_EFFECT_SELF_RESURRECT))
+            LOG_DEBUG("npcbots", "bot_ai::doCast(): {} (bot class {}) tried to cast spell {} on a CORPSE target {}", me->GetName(), _botclass, spellId, victim->GetName());
         //return false;
     }
 
     //spells with cast time
-    if (me->isMoving() && !(flags & TRIGGERED_CAST_DIRECTLY) && !(m_botSpellInfo->Attributes & SPELL_ATTR0_ON_NEXT_SWING) &&
-        !m_botSpellInfo->IsAutoRepeatRangedSpell() &&
-        ((m_botSpellInfo->InterruptFlags & SPELL_INTERRUPT_FLAG_MOVEMENT)
-        //autorepeat spells missing SPELL_INTERRUPT_FLAG_MOVEMENT
-        || spellId == SHOOT_WAND
-        //channeled spells missing SPELL_INTERRUPT_FLAG_MOVEMENT
-        //Mind Flay (Rank 8)
-        || spellId == 48155) &&
-        (m_botSpellInfo->IsChanneled() || m_botSpellInfo->CalcCastTime()))
+    if (me->isMoving() && !(flags & TRIGGERED_CAST_DIRECTLY) && !m_botSpellInfo->IsAutoRepeatRangedSpell() && (m_botSpellInfo->InterruptFlags & SPELL_INTERRUPT_FLAG_MOVEMENT) &&
+        !m_botSpellInfo->HasAttribute(SPELL_ATTR0_ON_NEXT_SWING))
     {
-        int32 cast_time = int32(m_botSpellInfo->CalcCastTime());
-        me->ModSpellCastTime(m_botSpellInfo, cast_time);
+        int32 cast_time;
+        if (m_botSpellInfo->IsChanneled())
+            cast_time = m_botSpellInfo->GetDuration();
+        else
+        {
+            cast_time = int32(m_botSpellInfo->CalcCastTime());
+            me->ModSpellCastTime(m_botSpellInfo, cast_time);
+        }
 
         if (cast_time > 0)
         {
@@ -2383,7 +2384,7 @@ void bot_ai::SetStats(bool force)
     if (me->GetLevel() != mylevel)
     {
         if (me->GetLevel() > mylevel)
-            UnsummonAll();
+            UnsummonAll(false);
 
         me->SetLevel(mylevel);
         force = true; //reinit spells/passives/other
@@ -3730,6 +3731,7 @@ bool bot_ai::CanBotAttack(Unit const* target, int8 byspell, bool secondary) cons
         }
     }
 
+    bool pulling = IsLastOrder(BOT_ORDER_PULL, 0, target->GetGUID());
     uint8 followdist = IAmFree() ? BotMgr::GetBotFollowDistDefault() : master->GetBotMgr()->GetBotFollowDist();
     float foldist = _getAttackDistance(float(followdist));
     if (!IAmFree() && IsRanged() && me->IsWithinLOSInMap(target, VMAP::ModelIgnoreFlags::M2, LINEOFSIGHT_ALL_CHECKS))
@@ -3759,9 +3761,9 @@ bool bot_ai::CanBotAttack(Unit const* target, int8 byspell, bool secondary) cons
     }
 
     return
-        ((master->IsInCombat() || target->IsInCombat() || IsWanderer() || (IAmFree() && me->GetFaction() == 14)) &&
+        ((master->IsInCombat() || target->IsInCombat() || IsWanderer() || (IAmFree() && me->GetFaction() == 14) || pulling) &&
         target->IsVisible() && target->isTargetableForAttack(false) && me->IsValidAttackTarget(target) &&
-        (!master->IsAlive() || target->IsControlledByPlayer() ||
+        (!master->IsAlive() || target->IsControlledByPlayer() || pulling ||
         (followdist > 0 && (master->GetDistance(target) <= foldist || HasBotCommandState(BOT_COMMAND_STAY)))) &&//if master is killed pursue to the end
         !IsInBotParty(target) && (target->InSamePhase(me) || CanSeeEveryone()) &&
         (!HasBotCommandState(BOT_COMMAND_STAY) ||
@@ -3924,6 +3926,20 @@ std::tuple<Unit*, Unit*> bot_ai::_getTargets(bool byspell, bool ranged, bool &re
         return { mytar, mytar };
 
     //Immediate targets
+    //orders
+    if (!IAmFree() && HasOrders() && HasRole(BOT_ROLE_DPS) && !me->IsInCombat() && me->getAttackers().empty())
+    {
+        if (_orders.front()._type == BOT_ORDER_PULL)
+        {
+            ObjectGuid orderTargetGuid = ObjectGuid(_orders.front().params.pullParams.targetGuid);
+            if (Unit* orderTarget = mytar && mytar->GetGUID() == orderTargetGuid ? mytar : ObjectAccessor::GetUnit(*me, orderTargetGuid))
+            {
+                if (CanBotAttack(orderTarget))
+                    return { orderTarget, nullptr };
+            }
+        }
+    }
+    //maps
     if (!IAmFree() && me->GetMap()->GetEntry() && !me->GetMap()->GetEntry()->IsWorldMap())
     {
         static const std::array WMOAreaGroupLashlayer = { 29476u }; // Halls of Strife
@@ -5448,6 +5464,57 @@ void bot_ai::CalculateAttackPos(Unit* target, Position& pos, bool& force) const
         pos.Relocate(master);
         force = true;
         return;
+    }
+
+    // Ranged bots that are being targeted should move towards a tank bot or towards the player
+    if (!IAmFree() && !IsTank(me) && HasRole(BOT_ROLE_RANGED) && target->GetVictim() == me && !CCed(target))
+    {
+        std::vector<Unit const*> safetyTargets;
+        if (Group const* gr = master->GetGroup())
+        {
+            for (GroupReference const* itr = gr->GetFirstMember(); itr != nullptr; itr = itr->next())
+            {
+                Player const* pl = itr->GetSource();
+                if (!pl || !pl->IsInMap(me) || pl->GetDistance(me) > VISIBILITY_DISTANCE_NORMAL)
+                    continue;
+                if (pl->IsAlive() && !pl->HasUnitState(UNIT_STATE_ISOLATED) && IsTank(pl))
+                    safetyTargets.push_back(pl);
+                if (!pl->HaveBot())
+                    continue;
+                BotMap const* map = pl->GetBotMgr()->GetBotMap();
+                for (BotMap::const_iterator citr = map->begin(); citr != map->end(); ++citr)
+                {
+                    Creature const* c = citr->second;
+                    if (c && c->IsInWorld() && me->GetMap() == c->FindMap() && c->IsAlive() && !c->HasUnitState(UNIT_STATE_ISOLATED) && IsTank(c) && c->GetBotAI()->HasRole(BOT_ROLE_DPS))
+                        safetyTargets.push_back(c);
+                }
+            }
+        }
+        else
+        {
+            BotMap const* map = master->GetBotMgr()->GetBotMap();
+            for (BotMap::const_iterator citr = map->begin(); citr != map->end(); ++citr)
+            {
+                Creature const* c = citr->second;
+                if (c && c->IsInWorld() && me->GetMap() == c->FindMap() && c->IsAlive() && !c->HasUnitState(UNIT_STATE_ISOLATED) && IsTank(c) && c->GetBotAI()->HasRole(BOT_ROLE_DPS))
+                    safetyTargets.push_back(c);
+            }
+        }
+        if (safetyTargets.empty() && master->IsAlive())
+            safetyTargets.push_back(master);
+
+        if (!safetyTargets.empty())
+        {
+            static const float ThresholdDistance = 1.5f;
+            Unit const* moveTarget = safetyTargets.size() == 1u ? safetyTargets.front() : safetyTargets[me->GetEntry() % safetyTargets.size()];
+            if (moveTarget->GetDistance(target) > ThresholdDistance && me->GetDistance(moveTarget) > ThresholdDistance * 2.0f)
+            {
+                float distanceMod = moveTarget->HasInArc(float(M_PI), target) ? 0.5f : -1.5f;
+                pos.Relocate(moveTarget->GetFirstCollisionPosition(ThresholdDistance * distanceMod, Position::NormalizeOrientation(moveTarget->GetAbsoluteAngle(target) - moveTarget->GetOrientation())));
+                force = true;
+                return;
+            }
+        }
     }
 
     pos.Relocate(ppos);
@@ -10264,6 +10331,17 @@ bool bot_ai::OnGossipSelect(Player* player, Creature* creature/* == me*/, uint32
                     break;
                 }
 
+                if (uint32 maxBotsPerAccount = BotMgr::GetMaxAccountBots())
+                {
+                    uint32 accountBotsCount = BotDataMgr::GetAccountBotsCount(player->GetSession()->GetAccountId());
+                    if (accountBotsCount >= maxBotsPerAccount)
+                    {
+                        ChatHandler ch(player->GetSession());
+                        ch.PSendSysMessage(LocalizedNpcText(player, BOT_TEXT_HIREFAIL_MAXBOTS_ACCOUNT).c_str(), accountBotsCount, maxBotsPerAccount);
+                        break;
+                    }
+                }
+
                 if (SetBotOwner(player))
                 {
                     if (_botclass == BOT_CLASS_SPHYNX)
@@ -11603,6 +11681,7 @@ void bot_ai::_autoLootCreatureGold(Creature* creature) const
 {
     Loot* loot = &creature->loot;
 
+    sScriptMgr->OnBeforeLootMoney(master, loot);
     loot->NotifyMoneyRemoved();
     Group const* gr = master->GetGroup();
     if (!gr)
@@ -15647,6 +15726,9 @@ void bot_ai::JustEngagedWith(Unit* u)
 
     ResetChase(u);
 
+    if (IsLastOrder(BOT_ORDER_PULL, 0, u->GetGUID()))
+        CompleteOrder(_orders.front());
+
     if (IAmFree() && me->GetVictim() && me->GetVictim() != u &&
         (me->getAttackers().empty() || (me->getAttackers().size() == 1u && *me->getAttackers().begin() == u)) &&
         me->GetVictim()->GetVictim() != me && !(me->GetVictim()->IsInCombat() || me->GetVictim()->IsInCombatWith(me)))
@@ -15824,78 +15906,22 @@ void bot_ai::KilledUnit(Unit* u)
     }
 }
 
-void bot_ai::UnsummonCreature(Creature* creature, bool save)
+void bot_ai::UnsummonCreature(Creature* creature, bool /*save*/)
 {
     if (creature)
     {
-        if (!save)
-        {
-            ASSERT_NOTNULL(creature->ToTempSummon())->UnSummon();
-            return;
-        }
-
-        bot_pet_ai* petai = creature->GetBotPetAI();
-        if (petai)
+        if (bot_pet_ai* petai = creature->GetBotPetAI())
         {
             petai->KillEvents(true);
             petai->canUpdate = false;
         }
 
-        creature->m_Events.KillAllEvents(false);
-        Map* petmap = creature->FindMap();
-        if (petmap)
-        {
-            if (creature->IsInWorld())
-            {
-                creature->RemoveFromWorld();
-                creature->BotStopMovement();
-                creature->RemoveAurasByType(SPELL_AURA_MOD_STUN);
-                creature->RemoveAurasByType(SPELL_AURA_MOD_FEAR);
-                creature->RemoveAurasByType(SPELL_AURA_MOD_CONFUSE);
-                creature->RemoveAurasByType(SPELL_AURA_MOD_ROOT);
-                creature->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TELEPORTED);
-                creature->InterruptNonMeleeSpells(true);
-                creature->RemoveAllGameObjects();
-                creature->CombatStop();
-                creature->ClearComboPoints();
-                creature->ClearComboPointHolders();
-            }
-
-            if (creature->IsInGrid())
-                petmap->RemoveFromMap(creature, false);
-        }
+        ASSERT_NOTNULL(creature->ToTempSummon())->UnSummon();
     }
 }
 void bot_ai::UnsummonPet(bool save)
 {
     UnsummonCreature(botPet, save);
-}
-
-void bot_ai::ResummonCreature(Creature* creature)
-{
-    if (creature)
-    {
-        if (creature->FindMap())
-            creature->ResetMap();
-        creature->SetMap(me->GetMap());
-
-        Position pos;
-        bot_pet_ai* petai = creature->GetBotPetAI();
-        if (petai)
-            petai->CalculatePetsOwnerFollowPosition(pos);
-        else
-            pos.Relocate(me);
-
-        creature->Relocate(pos);
-        me->GetMap()->AddToMap(creature);
-
-        if (petai)
-            petai->canUpdate = true;
-    }
-}
-void bot_ai::ResummonPet()
-{
-    ResummonCreature(botPet);
 }
 
 void bot_ai::MoveInLineOfSight(Unit* /*u*/)
@@ -16327,6 +16353,23 @@ void bot_ai::CancelAllOrders()
 }
 void bot_ai::_ProcessOrders()
 {
+    ordersTimer = 500;
+
+    while (!_orders.empty())
+    {
+        BotOrder const& order = _orders.front();
+        if (order._timeout <= time(0))
+        {
+            if (DEBUG_BOT_ORDERS)
+                LOG_DEBUG("npcbots", "bot_ai::_ProcessOrders: {} front order (type {}) expired...", me->GetName(), uint32(order._type));
+            CancelOrder(order);
+        }
+        else if (order._type == BOT_ORDER_PULL && (!HasRole(BOT_ROLE_DPS) || me->IsInCombat() || !me->getAttackers().empty()))
+            CompleteOrder(order);
+        else
+            break;
+    }
+
     if (HasBotCommandState(BOT_COMMAND_ISSUED_ORDER))
         return;
 
@@ -16335,8 +16378,6 @@ void bot_ai::_ProcessOrders()
 
     if (_orders.empty())
         return;
-
-    ordersTimer = 500;
 
     BotOrder const& order = _orders.front();
     Unit* target = nullptr;
@@ -16381,13 +16422,45 @@ void bot_ai::_ProcessOrders()
             doCast(target, _spells[order.params.spellCastParams.baseSpell]->spellId);
             break;
         }
+        case BOT_ORDER_PULL:
+        {
+            if (me->GetVictim())
+                break;
+            if (CCed(me))
+                break;
+
+            SetBotCommandState(BOT_COMMAND_ISSUED_ORDER);
+
+            if (order.params.pullParams.targetGuid)
+                target = ObjectAccessor::GetUnit(*me, ObjectGuid(order.params.pullParams.targetGuid));
+            else
+            {
+                LOG_ERROR("scripts", "bot_ai:_ProcessOrders: invalid pullParams.targetGuid {}!", order.params.pullParams.targetGuid);
+                CancelOrder(order);
+                return;
+            }
+
+            if (!target || !target->IsInWorld())
+            {
+                LOG_ERROR("scripts", "bot_ai:_ProcessOrders: target {} not found!", order.params.pullParams.targetGuid);
+                CancelOrder(order);
+                return;
+            }
+            if (!target->IsAlive() || target->IsInCombat() || !CanBotAttack(target))
+            {
+                LOG_ERROR("scripts", "bot_ai:_ProcessOrders: target {} cannot be pulled!", order.params.pullParams.targetGuid);
+                CancelOrder(order);
+                return;
+            }
+            break;
+        }
         default:
             LOG_ERROR("scripts", "bot_ai:_ProcessOrders: invalid order type {}!", uint32(order._type));
             CancelOrder(order);
             return;
     }
 }
-bool bot_ai::IsLastOrder(BotOrderTypes order_type, uint32 param1) const
+bool bot_ai::IsLastOrder(BotOrderTypes order_type, uint32 param1, ObjectGuid guidparam1) const
 {
     if (!_orders.empty())
     {
@@ -16397,7 +16470,11 @@ bool bot_ai::IsLastOrder(BotOrderTypes order_type, uint32 param1) const
             switch (order_type)
             {
                 case BOT_ORDER_SPELLCAST:
-                    if (order.params.spellCastParams.baseSpell == param1)
+                    if (!param1 || order.params.spellCastParams.baseSpell == param1)
+                        return true;
+                    break;
+                case BOT_ORDER_PULL:
+                    if (!guidparam1 || order.params.pullParams.targetGuid == guidparam1.GetRawValue())
                         return true;
                     break;
                 default:
@@ -18495,7 +18572,6 @@ bool bot_ai::FinishTeleport(bool reset)
             this->Reset();
         //bot->SetAI(oldAI);
         //me->IsAIEnabled = true;
-        ResummonAll();
         canUpdate = true;
         outdoorsTimer = 0;
 
