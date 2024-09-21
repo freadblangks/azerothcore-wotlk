@@ -387,7 +387,7 @@ struct boss_cthun : public BossAI
 
             //Spawn flesh tentacle
             /*
-            for (const auto& position : FleshTentaclePos)
+            for (auto const& position : FleshTentaclePos)
                 me->SummonCreature(NPC_FLESH_TENTACLE, position, TEMPSUMMON_CORPSE_TIMED_DESPAWN, 5000);
             */
 
@@ -506,7 +506,7 @@ struct boss_cthun : public BossAI
                     //DoCastSelf(SPELL_CARAPACE_CTHUN, true);
                     //Spawn flesh tentacle
                     /*
-                    for (const auto& position : FleshTentaclePos)
+                    for (auto const& position : FleshTentaclePos)
                         me->SummonCreature(NPC_FLESH_TENTACLE, position, TEMPSUMMON_CORPSE_TIMED_DESPAWN, 5000);
                     */
                 });

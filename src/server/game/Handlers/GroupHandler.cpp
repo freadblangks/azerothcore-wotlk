@@ -975,6 +975,17 @@ void WorldSession::HandleRequestPartyMemberStatsOpcode(WorldPacket& recvData)
     //npcbot: try send bot group member info
     if (Guid.IsCreature())
     {
+        if (!GetPlayer()->GetGroup() || !GetPlayer()->GetGroup()->IsMember(Guid))
+        {
+            WorldPacket data(SMSG_PARTY_MEMBER_STATS_FULL, 3+4+2);
+            data << uint8(0);
+            data << Guid.WriteAsPacked();
+            data << uint32(GROUP_UPDATE_FLAG_STATUS);
+            data << uint16(MEMBER_STATUS_OFFLINE);
+            SendPacket(&data);
+            return;
+        }
+
         uint32 creatureId = Guid.GetEntry();
         CreatureTemplate const* creatureTemplate = sObjectMgr->GetCreatureTemplate(creatureId);
         if (creatureTemplate && creatureTemplate->IsNPCBot())
@@ -988,7 +999,7 @@ void WorldSession::HandleRequestPartyMemberStatsOpcode(WorldPacket& recvData)
     //end npcbot
 
     Player* player = HashMapHolder<Player>::Find(Guid);
-    if (!player)
+    if (!player || !player->IsInSameRaidWith(_player))
     {
         WorldPacket data(SMSG_PARTY_MEMBER_STATS_FULL, 3 + 4 + 2);
         data << uint8(0);                                   // only for SMSG_PARTY_MEMBER_STATS_FULL, probably arena/bg related

@@ -76,7 +76,7 @@ struct DefaultTargetSelector : public Acore::unary_function<Unit*, bool>
         if (target == except)
             return false;
 
-        if (m_playerOnly && (target->GetTypeId() != TYPEID_PLAYER))
+        if (m_playerOnly && (!target->IsPlayer()))
             //npcbot: allow to target bots
             if (!(target->IsNPCBot()))
             //end npcbot
@@ -151,9 +151,9 @@ struct PowerUsersSelector : public Acore::unary_function<Unit*, bool>
         if (target->getPowerType() != _power)
             return false;
 
-        if (_playerOnly && target->GetTypeId() != TYPEID_PLAYER)
+        if (_playerOnly && !target->IsPlayer())
             //npcbot: allow to target bots
-            if (!(target->IsNPCBot()))
+            if (!target->IsNPCBot())
             //end npcbot
                 return false;
 
@@ -176,9 +176,9 @@ struct FarthestTargetSelector : public Acore::unary_function<Unit*, bool>
         if (!_me || !target)
             return false;
 
-        if (_playerOnly && target->GetTypeId() != TYPEID_PLAYER)
+        if (_playerOnly && !target->IsPlayer())
             //npcbot: allow to target bots
-            if (!(target->IsNPCBot()))
+            if (!target->IsNPCBot())
             //end npcbot
                 return false;
 

@@ -587,7 +587,7 @@ public:
         {
             if (t->IsPlayer())
                 return !t->HasAura(SPELL_FLASH_FREEZE_TRAPPED_PLAYER);
-            else if (t->GetTypeId() == TYPEID_UNIT)
+            else if (t->IsCreature())
                 return !t->HasAura(SPELL_FLASH_FREEZE_TRAPPED_NPC);
 
             return true;
@@ -711,7 +711,7 @@ public:
                 {
                     if (Unit* s = me->ToTempSummon()->GetSummonerUnit())
                     {
-                        if ((s->IsPlayer() && !s->HasAura(SPELL_FLASH_FREEZE_TRAPPED_PLAYER)) || (s->GetTypeId() == TYPEID_UNIT && !s->HasAura(SPELL_FLASH_FREEZE_TRAPPED_NPC)))
+                        if ((s->IsPlayer() && !s->HasAura(SPELL_FLASH_FREEZE_TRAPPED_PLAYER)) || (s->IsCreature() && !s->HasAura(SPELL_FLASH_FREEZE_TRAPPED_NPC)))
                             me->DespawnOrUnsummon(2000);
                         else if (s->IsPlayer())
                             if (InstanceScript* instanceScript = me->GetInstanceScript())
@@ -1363,14 +1363,14 @@ class spell_hodir_flash_freeze_aura : public AuraScript
         {
             Unit* target = GetTarget();
             Unit* caster = GetCaster();
-            if (!target || !caster || caster->GetTypeId() != TYPEID_UNIT)
+            if (!target || !caster || !caster->IsCreature())
                 return;
 
             if (Aura* aur = target->GetAura(target->IsPlayer() ? SPELL_FLASH_FREEZE_TRAPPED_PLAYER : SPELL_FLASH_FREEZE_TRAPPED_NPC))
             {
                 if (Unit* caster2 = aur->GetCaster())
                 {
-                    if (caster2->GetTypeId() == TYPEID_UNIT)
+                    if (caster2->IsCreature())
                     {
                         caster2->ToCreature()->DespawnOrUnsummon();
                     }
@@ -1387,7 +1387,7 @@ class spell_hodir_flash_freeze_aura : public AuraScript
                     caster->ToCreature()->AI()->JustSummoned(c);
                 }
             }
-            else if (target->GetTypeId() == TYPEID_UNIT)
+            else if (target->IsCreature())
             {
                 if( Creature* c = target->SummonCreature(NPC_FLASH_FREEZE_NPC, target->GetPositionX(), target->GetPositionY(), target->GetPositionZ(), 0.0f, TEMPSUMMON_CORPSE_TIMED_DESPAWN, 2000) )
                 {
@@ -1492,7 +1492,7 @@ public:
 
     bool OnCheck(Player*  /*player*/, Unit* target, uint32 /*criteria_id*/) override
     {
-        return target && target->GetEntry() == NPC_HODIR && target->GetTypeId() == TYPEID_UNIT && target->ToCreature()->AI()->GetData(1);
+        return target && target->GetEntry() == NPC_HODIR && target->IsCreature() && target->ToCreature()->AI()->GetData(1);
     }
 };
 
@@ -1503,7 +1503,7 @@ public:
 
     bool OnCheck(Player*  /*player*/, Unit* target, uint32 /*criteria_id*/) override
     {
-        return target && target->GetEntry() == NPC_HODIR && target->GetTypeId() == TYPEID_UNIT && target->ToCreature()->AI()->GetData(2);
+        return target && target->GetEntry() == NPC_HODIR && target->IsCreature() && target->ToCreature()->AI()->GetData(2);
     }
 };
 
@@ -1514,7 +1514,7 @@ public:
 
     bool OnCheck(Player*  /*player*/, Unit* target, uint32 /*criteria_id*/) override
     {
-        return target && target->GetEntry() == NPC_HODIR && target->GetTypeId() == TYPEID_UNIT && target->ToCreature()->AI()->GetData(3);
+        return target && target->GetEntry() == NPC_HODIR && target->IsCreature() && target->ToCreature()->AI()->GetData(3);
     }
 };
 
@@ -1525,7 +1525,7 @@ public:
 
     bool OnCheck(Player*  /*player*/, Unit* target, uint32 /*criteria_id*/) override
     {
-        return target && target->GetEntry() == NPC_HODIR && target->GetTypeId() == TYPEID_UNIT && target->ToCreature()->AI()->GetData(4);
+        return target && target->GetEntry() == NPC_HODIR && target->IsCreature() && target->ToCreature()->AI()->GetData(4);
     }
 };
 

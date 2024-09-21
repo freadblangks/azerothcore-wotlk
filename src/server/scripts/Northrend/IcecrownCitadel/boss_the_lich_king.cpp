@@ -386,9 +386,9 @@ public:
             return false;
         if (!target->IsAlive())
             return false;
-        if (_playerOnly && target->GetTypeId() != TYPEID_PLAYER)
+        if (_playerOnly && !target->IsPlayer())
             //npcbot: allow to target bots
-            if (!(target->IsNPCBot()))
+            if (!target->IsNPCBot())
             //end npcbot
                 return false;
         if (_maxDist && _source->GetExactDist(target) > _maxDist)
@@ -415,7 +415,7 @@ public:
             return false;
         if (!target->IsAlive())
             return false;
-        if (_playerOnly && target->GetTypeId() != TYPEID_PLAYER)
+        if (_playerOnly && !target->IsPlayer())
             //npcbot: allow to target bots
             if (!(target->IsNPCBot()))
             //end npcbot
@@ -452,7 +452,7 @@ public:
             return false;
         if (!target->IsAlive())
             return false;
-        if (target->GetTypeId() != TYPEID_PLAYER)
+        if (!target->IsPlayer())
             return false;
         if (_source->GetExactDist(target) > 100.0f)
             return false;
@@ -606,7 +606,7 @@ public:
 
     bool operator()(Unit* unit) const
     {
-        if (!unit || unit->GetTypeId() != TYPEID_PLAYER || unit == _sourceObj || _sourceObj->GetVictim() == unit || !unit->isTargetableForAttack())
+        if (!unit || !unit->IsPlayer() || unit == _sourceObj || _sourceObj->GetVictim() == unit || !unit->isTargetableForAttack())
             return false;
         if (unit->HasAura(SPELL_PLAGUE_AVOIDANCE) || unit->HasAura(SPELL_BOSS_HITTIN_YA_AURA) || unit->HasAura(_notAura1) || unit->HasAura(_notAura2))
             return false;
@@ -2084,7 +2084,7 @@ class spell_the_lich_king_shadow_trap_periodic : public SpellScript
         GetCaster()->CastSpell((Unit*)nullptr, SPELL_SHADOW_TRAP_KNOCKBACK, true);
         if (Aura* a = GetCaster()->GetAura(SPELL_SHADOW_TRAP_AURA))
             a->SetDuration(0);
-        if (GetCaster()->GetTypeId() == TYPEID_UNIT)
+        if (GetCaster()->IsCreature())
             GetCaster()->ToCreature()->DespawnOrUnsummon(3000);
     }
 
@@ -2108,7 +2108,7 @@ class spell_the_lich_king_ice_burst_target_search : public SpellScript
         if (unitList.empty())
             return;
 
-        if (GetCaster()->GetTypeId() == TYPEID_UNIT)
+        if (GetCaster()->IsCreature())
             GetCaster()->ToCreature()->AI()->DoAction(-1);
     }
 
@@ -2342,7 +2342,7 @@ class VehicleCheck
 public:
     bool operator()(WorldObject* unit)
     {
-        return (unit->GetTypeId() != TYPEID_UNIT && unit->GetTypeId() != TYPEID_PLAYER) || unit->ToUnit()->GetVehicle();
+        return (!unit->IsCreature() && !unit->IsPlayer()) || unit->ToUnit()->GetVehicle();
     }
 };
 
@@ -2813,7 +2813,7 @@ class spell_the_lich_king_vile_spirit_move_target_search : public SpellScript
     bool Load() override
     {
         _target = nullptr;
-        return GetCaster()->GetTypeId() == TYPEID_UNIT;
+        return GetCaster()->IsCreature();
     }
 
     void SelectTarget(std::list<WorldObject*>& targets)

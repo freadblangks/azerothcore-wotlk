@@ -427,9 +427,9 @@ bool NonTankTargetSelector::operator()(Unit const* target) const
     if (!target)
         return false;
 
-    if (_playerOnly && target->GetTypeId() != TYPEID_PLAYER)
+    if (_playerOnly && !target->IsPlayer())
         //npcbot: allow to target bots
-        if (!(target->IsNPCBot()))
+        if (!target->IsNPCBot())
         //end npcbot
             return false;
 

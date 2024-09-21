@@ -294,11 +294,6 @@ struct boss_kaelthas : public BossAI
             BossAI::AttackStart(who);
     }
 
-    void JustReachedHome() override
-    {
-        Reset();
-    }
-
     void MoveInLineOfSight(Unit* who) override
     {
         if (_phase == PHASE_NONE && who->IsPlayer() && me->IsValidAttackTarget(who))
@@ -1078,7 +1073,7 @@ class spell_kaelthas_kael_phase_two : public SpellScript
 
     bool Load() override
     {
-        if (GetCaster()->GetTypeId() == TYPEID_UNIT)
+        if (GetCaster()->IsCreature())
             if (InstanceScript* instance = GetCaster()->GetInstanceScript())
                 if (Creature* kael = instance->GetCreature(DATA_KAELTHAS))
                     kael->AI()->SummonedCreatureDies(GetCaster()->ToCreature(), nullptr);
@@ -1196,7 +1191,7 @@ class spell_kaelthas_flame_strike : public AuraScript
 
     bool Load() override
     {
-        return GetUnitOwner()->GetTypeId() == TYPEID_UNIT;
+        return GetUnitOwner()->IsCreature();
     }
 
     void OnRemove(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
