@@ -908,7 +908,7 @@ void AuctionHouseBot::Initialize()
                     if (!Bind_When_Picked_Up)
                         continue;
                     break;
-                case BIND_WHEN_EQUIPED:
+                case BIND_WHEN_EQUIPPED:
                     if (!Bind_When_Equipped)
                         continue;
                     break;
