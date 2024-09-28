@@ -791,7 +791,7 @@ public:
             if (me->HasUnitState(UNIT_STATE_CASTING))
                 return;
 
-            switch(events.ExecuteEvent())
+            switch (events.ExecuteEvent())
             {
                 case EVENT_SARA_P1_DOORS_CLOSE:
                     // Whispers of YS
@@ -1431,7 +1431,7 @@ public:
                 {
                     // Stun
                     if (me->GetInstanceScript())
-                        if(Creature* sara = ObjectAccessor::GetCreature(*me, me->GetInstanceScript()->GetGuidData(NPC_SARA)))
+                        if (Creature* sara = ObjectAccessor::GetCreature(*me, me->GetInstanceScript()->GetGuidData(NPC_SARA)))
                             sara->AI()->DoAction(MINUTE * IN_MILLISECONDS - std::min((uint32)MINUTE * IN_MILLISECONDS, _induceTimer));
 
                     _induceTimer = 0;
@@ -1446,7 +1446,7 @@ public:
                 return;
 
             summons.DespawnAll();
-            switch(param)
+            switch (param)
             {
                 case ACTION_ILLUSION_STORMWIND:
                     PrepareStormwindIllusion();
@@ -1916,7 +1916,7 @@ public:
             if (_visualTimer)
             {
                 _visualTimer += diff;
-                if (_visualTimer >= 100 && _visualTimer < 10000 )
+                if (_visualTimer >= 100 && _visualTimer < 10000)
                 {
                     me->CastSpell(me, SPELL_SIMPLE_TELEPORT, false);
                     _visualTimer = 10000;
@@ -2000,7 +2000,7 @@ public:
             if (_checkTimer != 0)
             {
                 _checkTimer -= diff;
-                if (_checkTimer < 0 )
+                if (_checkTimer < 0)
                     _checkTimer = 0;
             }
             else
@@ -2087,7 +2087,7 @@ public:
             if (_checkTimer != 0)
             {
                 _checkTimer -= diff;
-                if (_checkTimer < 0 )
+                if (_checkTimer < 0)
                     _checkTimer = 0;
             }
             else
@@ -2182,7 +2182,7 @@ public:
             if (_checkTimer != 0)
             {
                 _checkTimer -= diff;
-                if (_checkTimer < 0 )
+                if (_checkTimer < 0)
                     _checkTimer = 0;
             }
             else

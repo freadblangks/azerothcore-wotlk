@@ -97,7 +97,7 @@ struct boss_omor_the_unscarred : public BossAI
 
     void KilledUnit(Unit*) override
     {
-        if(!_hasSpoken)
+        if (!_hasSpoken)
         {
             _hasSpoken = true;
             Talk(SAY_KILL);
