@@ -1201,7 +1201,6 @@ void Creature::CalculateMinMaxDamage(WeaponAttackType attType, bool normalized, 
     minDamage = ((weaponMinDamage + baseValue) * dmgMultiplier * basePct + totalValue) * totalPct;
     maxDamage = ((weaponMaxDamage + baseValue) * dmgMultiplier * basePct + totalValue) * totalPct;
 
-    //Classic Early Level Nerf
     if (sWorld->getBoolConfig(CONFIG_NEW_BALANCE_FOR_CREATURES))
     {
         if (!IsDuringRemoveFromWorld() && FindMap())
@@ -1210,6 +1209,7 @@ void Creature::CalculateMinMaxDamage(WeaponAttackType attType, bool normalized, 
             MapEntry const* mapEntry = sMapStore.LookupEntry(GetMapId());
             if (GetTypeId() == TYPEID_UNIT && (!ToCreature()->IsPet() || !ToCreature()->IsGuardian() || !ToCreature()->IsControlledByPlayer() || !IsNPCBotOrPet()))
             {
+                //Classic Early Level Nerf
                 if (mapEntry->Expansion() == CONTENT_1_60 && GetLevel() <= 40)
                 {
                     minDamage *= (0.2 + (0.02 * GetLevel()));
@@ -1217,17 +1217,43 @@ void Creature::CalculateMinMaxDamage(WeaponAttackType attType, bool normalized, 
                 }
 
                 //TBC Buff
-                if (mapEntry->Expansion() == CONTENT_61_70 && !creatureMap->IsNonRaidDungeon() && !creatureMap->IsRaid())
+                if (mapEntry->Expansion() == CONTENT_61_70)
                 {
                     minDamage *= 1.33;
                     maxDamage *= 1.33;
                 }
 
+                //TBC Dungeon Heroic Nerf
+                if (mapEntry->Expansion() == CONTENT_61_70 && creatureMap->IsDungeon() && creatureMap->IsHeroic())
+                {
+                    minDamage *= 0.6;
+                    maxDamage *= 0.6;
+                }
+                //TBC Dungeon Nerf
+                else if (mapEntry->Expansion() == CONTENT_61_70 && creatureMap->IsDungeon())
+                {
+                    minDamage *= 0.3;
+                    maxDamage *= 0.3;
+                }
+
                 //WotLK Buff
-                if (mapEntry->Expansion() == CONTENT_71_80 && !creatureMap->IsNonRaidDungeon() && !creatureMap->IsRaid())
+                if (mapEntry->Expansion() == CONTENT_71_80)
                 {
                     minDamage *= 1.66;
                     maxDamage *= 1.66;
+                }
+
+                //WotLK Dungeon Heroic Buff
+                if (mapEntry->Expansion() == CONTENT_71_80 && creatureMap->IsDungeon() && creatureMap->IsHeroic())
+                {
+                    minDamage *= 0.7;
+                    maxDamage *= 0.7;
+                }
+                //WotLK Dungeon Nerf
+                else if (mapEntry->Expansion() == CONTENT_71_80 && creatureMap->IsDungeon())
+                {
+                    minDamage *= 0.4;
+                    maxDamage *= 0.4;
                 }
             }
         }

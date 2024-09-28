@@ -12314,19 +12314,47 @@ uint32 Unit::SpellDamageBonusDone(Unit* victim, SpellInfo const* spellProto, uin
         {
             Map* creatureMap = GetMap();
             MapEntry const* mapEntry = sMapStore.LookupEntry(GetMapId());
-            //Classic Early Level Nerf
             if (GetTypeId() == TYPEID_UNIT && (!ToCreature()->IsPet() || !ToCreature()->IsGuardian() || !ToCreature()->IsControlledByPlayer() || !IsNPCBotOrPet()))
             {
+                //Classic Early Level Nerf
                 if (mapEntry->Expansion() == CONTENT_1_60 && GetLevel() <= 40)
+                {
                     DoneTotalMod *= (0.2 + (0.02 * GetLevel()));
+                }
 
                 //TBC Buff
-                if (mapEntry->Expansion() == CONTENT_61_70 && !GetMap()->IsNonRaidDungeon() && !GetMap()->IsRaid())
+                if (mapEntry->Expansion() == CONTENT_61_70)
+                {
                     DoneTotalMod *= 1.33;
+                }
+
+                //TBC Dungeon Heroic Nerf
+                if (mapEntry->Expansion() == CONTENT_61_70 && creatureMap->IsDungeon() && creatureMap->IsHeroic())
+                {
+                    DoneTotalMod *= 0.6;
+                }
+                //TBC Dungeon Nerf
+                else if (mapEntry->Expansion() == CONTENT_61_70 && creatureMap->IsDungeon())
+                {
+                    DoneTotalMod *= 0.3;
+                }
 
                 //WotLK Buff
-                if (mapEntry->Expansion() == CONTENT_71_80 && !GetMap()->IsNonRaidDungeon() && !GetMap()->IsRaid())
+                if (mapEntry->Expansion() == CONTENT_71_80)
+                {
                     DoneTotalMod *= 1.66;
+                }
+
+                //WotLK Dungeon Heroic Buff
+                if (mapEntry->Expansion() == CONTENT_71_80 && creatureMap->IsDungeon() && creatureMap->IsHeroic())
+                {
+                    DoneTotalMod *= 0.7;
+                }
+                //WotLK Dungeon Nerf
+                else if (mapEntry->Expansion() == CONTENT_71_80 && creatureMap->IsDungeon())
+                {
+                    DoneTotalMod *= 0.4;
+                }
             }
         }
     }
