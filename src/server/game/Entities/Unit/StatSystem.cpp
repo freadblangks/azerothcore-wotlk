@@ -1227,14 +1227,14 @@ void Creature::CalculateMinMaxDamage(WeaponAttackType attType, bool normalized, 
                 //TBC Dungeon Heroic Nerf
                 if (mapEntry->Expansion() == CONTENT_61_70 && creatureMap->IsDungeon() && creatureMap->IsHeroic())
                 {
-                    minDamage *= 0.6;
-                    maxDamage *= 0.6;
+                    minDamage *= 0.75;
+                    maxDamage *= 0.75;
                 }
                 //TBC Dungeon Nerf
                 else if (mapEntry->Expansion() == CONTENT_61_70 && creatureMap->IsDungeon())
                 {
-                    minDamage *= 0.3;
-                    maxDamage *= 0.3;
+                    minDamage *= 0.45;
+                    maxDamage *= 0.45;
                 }
 
                 //WotLK Buff
@@ -1247,14 +1247,14 @@ void Creature::CalculateMinMaxDamage(WeaponAttackType attType, bool normalized, 
                 //WotLK Dungeon Heroic Buff
                 if (mapEntry->Expansion() == CONTENT_71_80 && creatureMap->IsDungeon() && creatureMap->IsHeroic())
                 {
-                    minDamage *= 0.7;
-                    maxDamage *= 0.7;
+                    minDamage *= 0.85;
+                    maxDamage *= 0.85;
                 }
                 //WotLK Dungeon Nerf
                 else if (mapEntry->Expansion() == CONTENT_71_80 && creatureMap->IsDungeon())
                 {
-                    minDamage *= 0.4;
-                    maxDamage *= 0.4;
+                    minDamage *= 0.55;
+                    maxDamage *= 0.55;
                 }
             }
         }

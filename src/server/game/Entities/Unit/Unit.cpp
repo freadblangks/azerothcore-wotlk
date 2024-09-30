@@ -12331,12 +12331,12 @@ uint32 Unit::SpellDamageBonusDone(Unit* victim, SpellInfo const* spellProto, uin
                 //TBC Dungeon Heroic Nerf
                 if (mapEntry->Expansion() == CONTENT_61_70 && creatureMap->IsDungeon() && creatureMap->IsHeroic())
                 {
-                    DoneTotalMod *= 0.6;
+                    DoneTotalMod *= 0.75;
                 }
                 //TBC Dungeon Nerf
                 else if (mapEntry->Expansion() == CONTENT_61_70 && creatureMap->IsDungeon())
                 {
-                    DoneTotalMod *= 0.3;
+                    DoneTotalMod *= 0.45;
                 }
 
                 //WotLK Buff
@@ -12348,12 +12348,12 @@ uint32 Unit::SpellDamageBonusDone(Unit* victim, SpellInfo const* spellProto, uin
                 //WotLK Dungeon Heroic Buff
                 if (mapEntry->Expansion() == CONTENT_71_80 && creatureMap->IsDungeon() && creatureMap->IsHeroic())
                 {
-                    DoneTotalMod *= 0.7;
+                    DoneTotalMod *= 0.85;
                 }
                 //WotLK Dungeon Nerf
                 else if (mapEntry->Expansion() == CONTENT_71_80 && creatureMap->IsDungeon())
                 {
-                    DoneTotalMod *= 0.4;
+                    DoneTotalMod *= 0.55;
                 }
             }
         }
