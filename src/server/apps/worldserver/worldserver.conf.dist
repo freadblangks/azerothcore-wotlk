@@ -4906,9 +4906,11 @@ NpcBot.EnrageOnDismiss = 1
 #                     existing non-spawned bots. Wandering bots aren't saved in DB.
 #        Note:        Wandering bots keep grids loaded, increasing CPU and memory usage.
 #        Note2:       You must have at least this number of non-spawned bots in creature_template.
+#        Note3:       A random number between min and max is generated at server start.
 #        Default:     0 - (Disabled)
 
-NpcBot.WanderingBots.Continents.Count = 0
+NpcBot.WanderingBots.Continents.Count.Min = 0
+NpcBot.WanderingBots.Continents.Count.Max = 0
 
 #
 #    NpcBot.WanderingBots.Continents.Levels

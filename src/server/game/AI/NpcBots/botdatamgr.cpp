@@ -1349,7 +1349,9 @@ void BotDataMgr::LoadWanderMap(bool reload)
 
 void BotDataMgr::GenerateWanderingBots()
 {
-    const uint32 wandering_bots_desired = BotMgr::GetDesiredWanderingBotsCount();
+    const uint32 wandering_bots_desired_min = BotMgr::GetDesiredWanderingBotsCountMin();
+    const uint32 wandering_bots_desired_max = BotMgr::GetDesiredWanderingBotsCountMax();
+    const uint32 wandering_bots_desired = urand(wandering_bots_desired_min, wandering_bots_desired_max);
 
     if (wandering_bots_desired == 0)
         return;

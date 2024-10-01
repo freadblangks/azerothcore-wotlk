@@ -71,7 +71,8 @@ uint32 _npcBotUpdateDelayBase;
 uint32 _npcBotEngageDelayDPS_default;
 uint32 _npcBotEngageDelayHeal_default;
 uint32 _npcBotOwnerExpireTime;
-uint32 _desiredWanderingBotsCount;
+uint32 _desiredWanderingBotsCountMin;
+uint32 _desiredWanderingBotsCountMax;
 uint32 _targetBGPlayersPerTeamCount_AV;
 uint32 _targetBGPlayersPerTeamCount_WS;
 uint32 _targetBGPlayersPerTeamCount_AB;
@@ -436,7 +437,8 @@ void BotMgr::LoadConfig(bool reload)
     _botStatLimits_parry            = sConfigMgr->GetFloatDefault("NpcBot.Stats.Limits.Parry", 95.0f);
     _botStatLimits_block            = sConfigMgr->GetFloatDefault("NpcBot.Stats.Limits.Block", 95.0f);
     _botStatLimits_crit             = sConfigMgr->GetFloatDefault("NpcBot.Stats.Limits.Crit", 95.0f);
-    _desiredWanderingBotsCount      = sConfigMgr->GetIntDefault("NpcBot.WanderingBots.Continents.Count", 0);
+    _desiredWanderingBotsCountMin   = sConfigMgr->GetIntDefault("NpcBot.WanderingBots.Continents.Count.Min", 0);
+    _desiredWanderingBotsCountMax   = sConfigMgr->GetIntDefault("NpcBot.WanderingBots.Continents.Count.Max", 0);
     _mult_xpgain_wanderer           = sConfigMgr->GetFloatDefault("NpcBot.WanderingBots.Continents.XPGain", 1.0f);
     _enableWanderingBotsBG          = sConfigMgr->GetBoolDefault("NpcBot.WanderingBots.BG.Enable", false);
     _enableConfigLevelCapBG         = sConfigMgr->GetBoolDefault("NpcBot.WanderingBots.BG.CapLevel", false);
@@ -541,7 +543,8 @@ void BotMgr::LoadConfig(bool reload)
     if (_enabled_wander_node_maps.empty())
     {
         LOG_ERROR("server.loading", "NpcBot.WanderingBots.Continents.Maps does not provide any valid maps! Wandering bots will not be spawned!");
-        _desiredWanderingBotsCount = 0;
+        _desiredWanderingBotsCountMin = 0;
+        _desiredWanderingBotsCountMax = 0;
     }
 
     _disabled_instance_maps.clear();
@@ -984,9 +987,13 @@ uint8 BotMgr::GetOwnershipExpireMode()
 {
     return _npcBotOwnerExpireMode;
 }
-uint32 BotMgr::GetDesiredWanderingBotsCount()
+uint32 BotMgr::GetDesiredWanderingBotsCountMin()
 {
-    return _desiredWanderingBotsCount;
+    return _desiredWanderingBotsCountMin;
+}
+uint32 BotMgr::GetDesiredWanderingBotsCountMax()
+{
+    return _desiredWanderingBotsCountMax;
 }
 uint32 BotMgr::GetBGTargetTeamPlayersCount(BattlegroundTypeId bgTypeId)
 {
