@@ -2286,6 +2286,12 @@ Stats.Limits.Crit  = 95.0
 
 Rate.Reputation.Gain = 1
 
+#    Rate.Reputation.Gain.HeroicOrRaid
+#        Description: Reputation gain rate in Heroics or Raids.
+#        Default:     1
+
+Rate.Reputation.Gain.HeroicOrRaid = 1
+
 #
 #    Rate.Reputation.LowLevel.Kill
 #        Description: Reputation gain from killing low level (grey) creatures.

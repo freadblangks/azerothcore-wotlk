@@ -534,6 +534,7 @@ void World::LoadConfigSettings(bool reload)
         _rate_values[RATE_REPAIRCOST] = 0.0f;
     }
     _rate_values[RATE_REPUTATION_GAIN]                      = sConfigMgr->GetOption<float>("Rate.Reputation.Gain", 1.0f);
+    _rate_values[RATE_REPUTATION_GAIN_HEROIC_OR_RAID]       = sConfigMgr->GetOption<float>("Rate.Reputation.Gain.HeroicOrRaid", 1.0f);
     _rate_values[RATE_REPUTATION_LOWLEVEL_KILL]             = sConfigMgr->GetOption<float>("Rate.Reputation.LowLevel.Kill", 1.0f);
     _rate_values[RATE_REPUTATION_LOWLEVEL_QUEST]            = sConfigMgr->GetOption<float>("Rate.Reputation.LowLevel.Quest", 1.0f);
     _rate_values[RATE_REPUTATION_RECRUIT_A_FRIEND_BONUS]    = sConfigMgr->GetOption<float>("Rate.Reputation.RecruitAFriendBonus", 0.1f);
