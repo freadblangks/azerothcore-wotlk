@@ -164,9 +164,9 @@ public:
             std::ostringstream ss;
             uint32 loc = player->GetSession()->GetSessionDbLocaleIndex();
             if (loc == 3)
-                ss << "Du hast |cff4CFF00%i |rEhre erhalten.";
+                ss << "Du hast |cff4CFF00{} |rEhre erhalten.";
             else
-                ss << "You have been awarded |cff4CFF00%i |rHonor.";
+                ss << "You have been awarded |cff4CFF00{} |rHonor.";
 
             ChatHandler(player->GetSession()).PSendSysMessage(ss.str().c_str(), honor);
         }
@@ -175,9 +175,9 @@ public:
             std::ostringstream ss;
             uint32 loc = player->GetSession()->GetSessionDbLocaleIndex();
             if (loc == 3)
-                ss << "Du hast |cff4CFF00%i |rEhre erhalten.";
+                ss << "Du hast |cff4CFF00{} |rEhre erhalten.";
             else
-                ss << "You have been awarded |cff4CFF00%i |rHonor.";
+                ss << "You have been awarded |cff4CFF00{} |rHonor.";
             ChatHandler(player->GetSession()).PSendSysMessage(ss.str().c_str(), honor);
         }
     }

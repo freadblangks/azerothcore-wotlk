@@ -783,13 +783,13 @@ static int CheckIntegerRange(lua_State* luastate, int narg, int min, int max)
 
     if (value > max)
     {
-        snprintf(error_buffer, 64, "value must be less than or equal to %i", max);
+        snprintf(error_buffer, 64, "value must be less than or equal to {}", max);
         return luaL_argerror(luastate, narg, error_buffer);
     }
 
     if (value < min)
     {
-        snprintf(error_buffer, 64, "value must be greater than or equal to %i", min);
+        snprintf(error_buffer, 64, "value must be greater than or equal to {}", min);
         return luaL_argerror(luastate, narg, error_buffer);
     }
 
