@@ -1227,14 +1227,14 @@ void Creature::CalculateMinMaxDamage(WeaponAttackType attType, bool normalized, 
                 //TBC Dungeon Heroic Nerf
                 if (mapEntry->Expansion() == CONTENT_61_70 && creatureMap->IsDungeon() && creatureMap->IsHeroic())
                 {
-                    minDamage *= 0.75;
-                    maxDamage *= 0.75;
+                    minDamage *= 0.8;
+                    maxDamage *= 0.8;
                 }
                 //TBC Dungeon Nerf
                 else if (mapEntry->Expansion() == CONTENT_61_70 && creatureMap->IsDungeon())
                 {
-                    minDamage *= 0.45;
-                    maxDamage *= 0.45;
+                    minDamage *= 0.75;
+                    maxDamage *= 0.75;
                 }
 
                 //WotLK Buff
@@ -1247,24 +1247,24 @@ void Creature::CalculateMinMaxDamage(WeaponAttackType attType, bool normalized, 
                 //WotLK Dungeon Heroic Buff
                 if (mapEntry->Expansion() == CONTENT_71_80 && creatureMap->IsDungeon() && creatureMap->IsHeroic())
                 {
-                    minDamage *= 0.85;
-                    maxDamage *= 0.85;
+                    minDamage *= 0.8;
+                    maxDamage *= 0.8;
                 }
                 //WotLK Dungeon Nerf
                 else if (mapEntry->Expansion() == CONTENT_71_80 && creatureMap->IsDungeon())
                 {
-                    minDamage *= 0.55;
-                    maxDamage *= 0.55;
+                    minDamage *= 0.75;
+                    maxDamage *= 0.75;
                 }
             }
         }
     }
 
     // pussywizard: crashfix (casting negative to uint => min > max => assertion in urand)
-    if (minDamage < 0.0f || minDamage > 1000000000.0f)
-        minDamage = 0.0f;
-    if (maxDamage < 0.0f || maxDamage > 1000000000.0f)
-        maxDamage = 0.0f;
+    if (minDamage < 1.0f || minDamage > 1000000000.0f)
+        minDamage = 1.0f;
+    if (maxDamage < 1.0f || maxDamage > 1000000000.0f)
+        maxDamage = 1.0f;
     if (minDamage > maxDamage)
         minDamage = maxDamage;
 }

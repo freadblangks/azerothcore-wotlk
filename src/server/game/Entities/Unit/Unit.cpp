@@ -12331,12 +12331,12 @@ uint32 Unit::SpellDamageBonusDone(Unit* victim, SpellInfo const* spellProto, uin
                 //TBC Dungeon Heroic Nerf
                 if (mapEntry->Expansion() == CONTENT_61_70 && creatureMap->IsDungeon() && creatureMap->IsHeroic())
                 {
-                    DoneTotalMod *= 0.75;
+                    DoneTotalMod *= 0.8;
                 }
                 //TBC Dungeon Nerf
                 else if (mapEntry->Expansion() == CONTENT_61_70 && creatureMap->IsDungeon())
                 {
-                    DoneTotalMod *= 0.45;
+                    DoneTotalMod *= 0.75;
                 }
 
                 //WotLK Buff
@@ -12348,12 +12348,12 @@ uint32 Unit::SpellDamageBonusDone(Unit* victim, SpellInfo const* spellProto, uin
                 //WotLK Dungeon Heroic Buff
                 if (mapEntry->Expansion() == CONTENT_71_80 && creatureMap->IsDungeon() && creatureMap->IsHeroic())
                 {
-                    DoneTotalMod *= 0.85;
+                    DoneTotalMod *= 0.8;
                 }
                 //WotLK Dungeon Nerf
                 else if (mapEntry->Expansion() == CONTENT_71_80 && creatureMap->IsDungeon())
                 {
-                    DoneTotalMod *= 0.55;
+                    DoneTotalMod *= 0.75;
                 }
             }
         }
@@ -12498,7 +12498,7 @@ uint32 Unit::SpellDamageBonusDone(Unit* victim, SpellInfo const* spellProto, uin
     if (Player* modOwner = GetSpellModOwner())
         modOwner->ApplySpellMod(spellProto->Id, damagetype == DOT ? SPELLMOD_DOT : SPELLMOD_DAMAGE, tmpDamage);
 
-    return uint32(std::max(tmpDamage, 0.0f));
+    return uint32(std::max(tmpDamage, 1.0f));
 }
 
 uint32 Unit::SpellDamageBonusTaken(Unit* caster, SpellInfo const* spellProto, uint32 pdamage, DamageEffectType damagetype, uint32 stack)
