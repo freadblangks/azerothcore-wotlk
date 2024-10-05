@@ -335,7 +335,7 @@ public:
                     if (me->HealthBelowPct(10))
                     {
                         if (Creature* Sath = ObjectAccessor::GetCreature(*me, instance->GetGuidData(NPC_SATHROVARR)))
-                            Sath->AI()->DoAction(ACTION_ENRAGE_OTHER);
+                            //Sath->AI()->DoAction(ACTION_ENRAGE_OTHER);
                         DoAction(ACTION_ENRAGE);
                         break;
                     }
@@ -597,7 +597,7 @@ public:
                             if (Creature *kalecgos = ObjectAccessor::GetCreature(*me, instanceScript->GetGuidData(
                                     NPC_KALECGOS)))
                             {
-                                kalecgos->AI()->DoAction(ACTION_ENRAGE_OTHER);
+                                //kalecgos->AI()->DoAction(ACTION_ENRAGE_OTHER);
                             }
                         }
                         DoAction(ACTION_ENRAGE);
