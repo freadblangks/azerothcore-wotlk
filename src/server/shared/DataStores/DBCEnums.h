@@ -49,7 +49,7 @@ enum BattlegroundBracketId : uint8                                  // bracketId
 };
 
 // must be max value in PvPDificulty slot+1
-#define MAX_BATTLEGROUND_BRACKETS  16
+#define MAX_BATTLEGROUND_BRACKETS  35
 
 enum AreaTeams
 {

@@ -533,6 +533,7 @@ void World::LoadConfigSettings(bool reload)
         _rate_values[RATE_REPAIRCOST] = 0.0f;
     }
     _rate_values[RATE_REPUTATION_GAIN]                      = sConfigMgr->GetOption<float>("Rate.Reputation.Gain", 1.0f);
+    _rate_values[RATE_REPUTATION_GAIN_HEROIC_OR_RAID]       = sConfigMgr->GetOption<float>("Rate.Reputation.Gain.HeroicOrRaid", 1.0f);
     _rate_values[RATE_REPUTATION_LOWLEVEL_KILL]             = sConfigMgr->GetOption<float>("Rate.Reputation.LowLevel.Kill", 1.0f);
     _rate_values[RATE_REPUTATION_LOWLEVEL_QUEST]            = sConfigMgr->GetOption<float>("Rate.Reputation.LowLevel.Quest", 1.0f);
     _rate_values[RATE_REPUTATION_RECRUIT_A_FRIEND_BONUS]    = sConfigMgr->GetOption<float>("Rate.Reputation.RecruitAFriendBonus", 0.1f);
@@ -544,6 +545,9 @@ void World::LoadConfigSettings(bool reload)
     _rate_values[RATE_CREATURE_NORMAL_HP]                   = sConfigMgr->GetOption<float>("Rate.Creature.Normal.HP", 1.0f);
     _rate_values[RATE_CREATURE_ELITE_ELITE_HP]              = sConfigMgr->GetOption<float>("Rate.Creature.Elite.Elite.HP", 1.0f);
     _rate_values[RATE_CREATURE_ELITE_RAREELITE_HP]          = sConfigMgr->GetOption<float>("Rate.Creature.Elite.RAREELITE.HP", 1.0f);
+    _rate_values[RATE_CREATURE_ELITE_BOSS]                  = sConfigMgr->GetOption<float>("Rate.Creature.Elite.BOSS.HP", 1.0f);
+    _rate_values[RATE_CREATURE_ELITE_BOSS_HEROIC]           = sConfigMgr->GetOption<float>("Rate.Creature.Elite.BOSS_HEROIC.HP", 1.0f);
+    _rate_values[RATE_CREATURE_ELITE_BOSS_RAID]             = sConfigMgr->GetOption<float>("Rate.Creature.Elite.BOSS_RAID.HP", 1.0f);
     _rate_values[RATE_CREATURE_ELITE_WORLDBOSS_HP]          = sConfigMgr->GetOption<float>("Rate.Creature.Elite.WORLDBOSS.HP", 1.0f);
     _rate_values[RATE_CREATURE_ELITE_RARE_HP]               = sConfigMgr->GetOption<float>("Rate.Creature.Elite.RARE.HP", 1.0f);
     _rate_values[RATE_CREATURE_NORMAL_SPELLDAMAGE]          = sConfigMgr->GetOption<float>("Rate.Creature.Normal.SpellDamage", 1.0f);
@@ -565,7 +569,8 @@ void World::LoadConfigSettings(bool reload)
 
     _rate_values[RATE_MISS_CHANCE_MULTIPLIER_TARGET_CREATURE]       = sConfigMgr->GetOption<float>("Rate.MissChanceMultiplier.TargetCreature", 11.0f);
     _rate_values[RATE_MISS_CHANCE_MULTIPLIER_TARGET_PLAYER]         = sConfigMgr->GetOption<float>("Rate.MissChanceMultiplier.TargetPlayer", 7.0f);
-    _bool_configs[CONFIG_MISS_CHANCE_MULTIPLIER_ONLY_FOR_PLAYERS] = sConfigMgr->GetOption<bool>("Rate.MissChanceMultiplier.OnlyAffectsPlayer", false);
+    _bool_configs[CONFIG_MISS_CHANCE_MULTIPLIER_ONLY_FOR_PLAYERS]   = sConfigMgr->GetOption<bool>("Rate.MissChanceMultiplier.OnlyAffectsPlayer", false);
+    _bool_configs[CONFIG_NEW_BALANCE_FOR_CREATURES]                 = sConfigMgr->GetOption<bool>("Creature.NewBalance.Active", true);
 
     _rate_values[RATE_TALENT]                               = sConfigMgr->GetOption<float>("Rate.Talent", 1.0f);
     if (_rate_values[RATE_TALENT] < 0.0f)

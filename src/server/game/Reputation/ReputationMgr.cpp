@@ -385,6 +385,9 @@ bool ReputationMgr::SetOneFactionReputation(FactionEntry const* factionEntry, fl
         if (incremental)
         {
             stand *= sWorld->getRate(RATE_REPUTATION_GAIN);
+            Map const* map = _player->IsInWorld() ? _player->GetMap() : sMapMgr->FindMap(_player->GetMapId(), _player->GetInstanceId());
+            if (map && map->IsRaidOrHeroicDungeon())
+                stand *= sWorld->getRate(RATE_REPUTATION_GAIN_HEROIC_OR_RAID);
         }
 
         int32 standing = 0;

@@ -25,6 +25,9 @@
 #include "ScriptMgr.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
+#include "Config.h"
+//Todo: eww
+#include "../../../../modules/mod-Individual-Progression/src/IndividualProgression.h"
 
 GossipMenu::GossipMenu()
 {
@@ -470,6 +473,10 @@ void PlayerMenu::SendQuestGiverQuestDetails(Quest const* quest, ObjectGuid npcGU
         {
             questXp = 0;
         }
+
+        //Boxhead: Show correct xp
+        questXp = CalculateCustomQuestXpExtras(player, questXp);
+
         sScriptMgr->OnQuestComputeXP(player, quest, questXp);
         data << questXp;
     }
@@ -547,7 +554,9 @@ void PlayerMenu::SendQuestQueryResponse(Quest const* quest) const
     data << uint32(quest->GetRepObjectiveValue2());         // shown in quest log as part of quest objective OPPOSITE faction
 
     data << uint32(quest->GetNextQuestInChain());           // client will request this quest from NPC, if not 0
-    data << uint32(quest->GetXPId());                       // used for calculating rewarded experience
+    data << uint32(0);                                      // used for calculating rewarded experience || BOXHEAD: Disabled due to incorrect values in quest log
+
+    // Boxhead TODO: FIX QUEST LOG XP HERE
 
     if (quest->HasFlag(QUEST_FLAGS_HIDDEN_REWARDS))
         data << uint32(0);                                  // Hide money rewarded
@@ -722,6 +731,10 @@ void PlayerMenu::SendQuestGiverOfferReward(Quest const* quest, ObjectGuid npcGUI
     {
         questXp = 0;
     }
+
+    //Boxhead: Show correct xp
+    questXp = CalculateCustomQuestXpExtras(player, questXp);
+
     sScriptMgr->OnQuestComputeXP(player, quest, questXp);
     data << questXp;
 
@@ -838,4 +851,48 @@ void PlayerMenu::SendQuestGiverRequestItems(Quest const* quest, ObjectGuid npcGU
 
     _session->SendPacket(&data);
     LOG_DEBUG("network", "WORLD: Sent SMSG_QUESTGIVER_REQUEST_ITEMS {}, questid={}", npcGUID.ToString(), quest->GetQuestId());
+}
+
+uint32 PlayerMenu::CalculateCustomQuestXpExtras(Player* player, uint32 questXp) const
+{
+    //Weekend extra xp
+    if (IsXpWeekendEventActive())
+        questXp *= GetXpWeekendExperienceRate(player);
+
+    // Boxhead Custom | Give more xp depending on individual progression
+    // > Vanilla xp boost
+    if (sIndividualProgression->enabled && sIndividualProgression->hasPassedProgression(player, PROGRESSION_NAXX40) && !sIndividualProgression->hasPassedProgression(player, PROGRESSION_TBC_TIER_5) && player->GetLevel() < 60)
+        questXp *= 1.5;
+
+    // > TBC xp boost
+    if (sIndividualProgression->enabled && sIndividualProgression->hasPassedProgression(player, PROGRESSION_TBC_TIER_5) && !sIndividualProgression->hasPassedProgression(player, PROGRESSION_WOTLK_TIER_5) && player->GetLevel() < 70)
+        questXp *= 2.25;
+
+    // > WotLK xp boost
+    if (sIndividualProgression->enabled && sIndividualProgression->hasPassedProgression(player, PROGRESSION_WOTLK_TIER_5) && player->GetLevel() < 80)
+        questXp *= 3.0;
+
+    return questXp;
+}
+
+float PlayerMenu::GetXpWeekendExperienceRate(Player* player) const
+{
+    float rate = sConfigMgr->GetOption<float>("XPWeekend.xpAmount", 1);
+
+    // Prevent returning 0% rate.
+    return rate ? rate : 1;
+}
+
+bool PlayerMenu::IsXpWeekendEventActive() const
+{
+    if (sConfigMgr->GetOption<bool>("XPWeekend.AlwaysEnabled", false))
+        return true;
+        
+    if (!sConfigMgr->GetOption<bool>("XPWeekend.Enabled", false))
+        return false;
+
+    time_t t = time(nullptr);
+    tm* now = localtime(&t);
+
+    return now->tm_wday == 5 || now->tm_wday == 6 || now->tm_wday == 0;
 }

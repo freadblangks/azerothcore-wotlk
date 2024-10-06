@@ -302,7 +302,7 @@ public:
             bEnteredCombat = true;
             me->CastSpell(me, SPELL_OOZE_TANK_PROTECTION, true);
             events.Reset();
-            events.ScheduleEvent(EVENT_BERSERK, 10min);
+            events.ScheduleEvent(EVENT_BERSERK, 14min);
             events.ScheduleEvent(EVENT_SLIME_PUDDLE, 10s, EVENT_GROUP_ABILITIES);
             events.ScheduleEvent(EVENT_UNSTABLE_EXPERIMENT, 30s, 35s, EVENT_GROUP_ABILITIES);
             if (IsHeroic())
@@ -398,13 +398,13 @@ public:
             switch (_phase)
             {
                 case 1:
-                    if (HealthAbovePct(80))
+                    if (HealthAbovePct(70))
                         return;
                     me->SetReactState(REACT_PASSIVE);
                     bChangePhase = true;
                     break;
                 case 2:
-                    if (HealthAbovePct(35))
+                    if (HealthAbovePct(15))
                         return;
                     me->SetReactState(REACT_PASSIVE);
                     bChangePhase = true;
@@ -836,7 +836,7 @@ public:
 
         void CastMainSpell() override
         {
-            me->CastSpell(me, SPELL_VOLATILE_OOZE_ADHESIVE, false);
+            //me->CastSpell(me, SPELL_VOLATILE_OOZE_ADHESIVE, false);
         }
     };
 
@@ -860,7 +860,7 @@ public:
 
         void CastMainSpell() override
         {
-            me->CastCustomSpell(SPELL_GASEOUS_BLOAT, SPELLVALUE_AURA_STACK, 10, me, false);
+            //me->CastCustomSpell(SPELL_GASEOUS_BLOAT, SPELLVALUE_AURA_STACK, 10, me, false);
         }
 
     private:

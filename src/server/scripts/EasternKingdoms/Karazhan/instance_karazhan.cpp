@@ -329,6 +329,13 @@ public:
                         DoRespawnCreature(_barnesGUID, true);
                     }
                     break;
+                case DATA_CURATOR:
+                    if (state == DONE)
+                    {
+                        //Boxhead: Allow to skip chess event
+                        HandleGameObject(m_uiGamesmansExitDoor, true);
+                    }
+                    break;
                 default:
                     break;
             }

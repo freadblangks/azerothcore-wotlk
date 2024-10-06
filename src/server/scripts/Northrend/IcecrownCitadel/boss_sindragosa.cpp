@@ -246,9 +246,6 @@ public:
     LastPhaseIceTombTargetSelector(Creature* source) : _source(source) { }
     bool operator()(Unit const* target) const
     {
-        if (!target)
-            return false;
-
         if (target->GetExactDist(_source) > 80.0f)
             return false;
 
@@ -331,13 +328,13 @@ public:
 
             summons.DespawnAll();
             events.Reset();
-            events.ScheduleEvent(EVENT_BERSERK, 10min);
+            events.ScheduleEvent(EVENT_BERSERK, 15min);
             events.ScheduleEvent(EVENT_AIR_PHASE, 50s);
             events.ScheduleEvent(EVENT_CLEAVE, 10s, EVENT_GROUP_LAND_PHASE);
             events.ScheduleEvent(EVENT_TAIL_SMASH, 20s, EVENT_GROUP_LAND_PHASE);
             events.ScheduleEvent(EVENT_FROST_BREATH, 8s, 12s, EVENT_GROUP_LAND_PHASE);
             events.ScheduleEvent(EVENT_UNCHAINED_MAGIC, 9s, 14s, EVENT_GROUP_LAND_PHASE);
-            events.ScheduleEvent(EVENT_ICY_GRIP, 33s + 500ms, EVENT_GROUP_LAND_PHASE);
+            //events.ScheduleEvent(EVENT_ICY_GRIP, 33s + 500ms, EVENT_GROUP_LAND_PHASE);
 
             me->setActive(true);
             me->SetInCombatWithZone();
@@ -555,8 +552,8 @@ public:
                     Talk(EMOTE_WARN_BLISTERING_COLD);
                     me->CastSpell(me, SPELL_BLISTERING_COLD, false);
                     events.ScheduleEvent(EVENT_BLISTERING_COLD_YELL, 5s, EVENT_GROUP_LAND_PHASE);
-                    if (_isThirdPhase)
-                        events.RescheduleEvent(EVENT_ICY_GRIP, 65s, 70s);
+                    //if (_isThirdPhase)
+                        //events.RescheduleEvent(EVENT_ICY_GRIP, 65s, 70s);
                     break;
                 case EVENT_BLISTERING_COLD_YELL:
                     Talk(SAY_BLISTERING_COLD);
@@ -583,7 +580,7 @@ public:
                     me->SetDisableGravity(true);
                     me->GetMotionMaster()->MoveTakeoff(POINT_TAKEOFF, me->GetPositionX(), me->GetPositionY(), me->GetPositionZ() + 20.0f, 10.0f);
                     events.CancelEventGroup(EVENT_GROUP_LAND_PHASE);
-                    events.ScheduleEvent(EVENT_AIR_PHASE, 110s);
+                    events.ScheduleEvent(EVENT_AIR_PHASE, 150s);
                     break;
                 case EVENT_AIR_MOVEMENT:
                     me->GetMotionMaster()->MovePoint(POINT_AIR_PHASE, SindragosaAirPos);
@@ -630,7 +627,7 @@ public:
                     events.ScheduleEvent(EVENT_TAIL_SMASH, 19s, 23s, EVENT_GROUP_LAND_PHASE);
                     events.ScheduleEvent(EVENT_FROST_BREATH, 7s, 10s, EVENT_GROUP_LAND_PHASE);
                     events.ScheduleEvent(EVENT_UNCHAINED_MAGIC, 12s, 17s, EVENT_GROUP_LAND_PHASE);
-                    events.ScheduleEvent(EVENT_ICY_GRIP, 35s, 40s, EVENT_GROUP_LAND_PHASE);
+                    //events.ScheduleEvent(EVENT_ICY_GRIP, 35s, 40s, EVENT_GROUP_LAND_PHASE);
                     me->GetMotionMaster()->MoveLand(POINT_LAND_GROUND, SindragosaLandPos, 10.0f);
                     break;
                 case EVENT_THIRD_PHASE_CHECK:
@@ -638,13 +635,14 @@ public:
                     {
                         Talk(SAY_PHASE_2);
                         events.ScheduleEvent(EVENT_ICE_TOMB, 7s, 10s);
-                        events.RescheduleEvent(EVENT_ICY_GRIP, 35s, 40s, EVENT_GROUP_LAND_PHASE);
+                        //events.RescheduleEvent(EVENT_ICY_GRIP, 35s, 40s, EVENT_GROUP_LAND_PHASE);
                         me->CastSpell(me, SPELL_MYSTIC_BUFFET, true);
                     }
                     else
                         events.ScheduleEvent(EVENT_THIRD_PHASE_CHECK, 5s);
                     break;
                 case EVENT_ICE_TOMB:
+                    /*
                     if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, LastPhaseIceTombTargetSelector(me)))
                     {
                         Talk(EMOTE_WARN_FROZEN_ORB, target);
@@ -654,6 +652,7 @@ public:
                             if (events.GetTimer() > evTime || evTime - events.GetTimer() < 8000)
                                 events.RescheduleEvent(EVENT_ICY_GRIP, 8s, EVENT_GROUP_LAND_PHASE);
                     }
+                    */
                     events.ScheduleEvent(EVENT_ICE_TOMB, 18s, 22s);
                     break;
                 default:
@@ -1002,11 +1001,21 @@ class SindragosaIceTombCheck
 public:
     bool operator()(Unit* unit) const
     {
+        //npcbot
+        if (!unit->IsPlayer())
+            return true;
+        //end npcbot
+
         return unit->HasAura(SPELL_FROST_IMBUED_BLADE) || unit->IsImmunedToDamageOrSchool(SPELL_SCHOOL_MASK_ALL);
     }
 
     bool operator()(WorldObject* object) const
     {
+        //npcbot
+        if (!object->IsPlayer())
+            return true;
+        //end npcbot
+
         return object->ToUnit() && (object->ToUnit()->HasAura(SPELL_FROST_IMBUED_BLADE) || object->ToUnit()->IsImmunedToDamageOrSchool(SPELL_SCHOOL_MASK_ALL));
     }
 };
@@ -1041,6 +1050,10 @@ class spell_sindragosa_ice_tomb_trap : public SpellScript
 
     void FilterTargets(std::list<WorldObject*>& unitList)
     {
+            //npcbot
+            unitList.remove_if(SindragosaIceTombCheck());
+            //end npcbot
+
         unitList.remove_if(Acore::UnitAuraCheck(true, GetSpellInfo()->Id));
         _targetList.clear();
         _targetList = unitList;

@@ -95,6 +95,7 @@ enum KZCreatures
     NPC_MIDNIGHT                        = 16151,
     NPC_NIGHTBANE                       = 17225,
     NPC_SHADE_OF_ARAN                   = 16524,
+    NPC_CURATOR                         = 15691,
 
     // Trash
     NPC_COLDMIST_WIDOW                  = 16171,

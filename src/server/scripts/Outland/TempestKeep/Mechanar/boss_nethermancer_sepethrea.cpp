@@ -171,7 +171,7 @@ struct npc_raging_flames : public ScriptedAI
             DoCastSelf(SPELL_INFERNO);
             FixateRandomTarget();
 
-            task.Repeat(20s, 30s);
+            task.Repeat(10s, 15s);
         });
     }
 

@@ -428,7 +428,10 @@ bool NonTankTargetSelector::operator()(Unit const* target) const
         return false;
 
     if (_playerOnly && !target->IsPlayer())
-        return false;
+        //npcbot: allow to target bots
+        if (!target->IsNPCBot())
+        //end npcbot
+            return false;
 
     if (Unit* currentVictim = _source->GetThreatMgr().GetCurrentVictim())
         return target != currentVictim;

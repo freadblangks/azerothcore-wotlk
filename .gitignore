@@ -4,7 +4,6 @@
 
 /conf/*
 !/conf/dist
-/modules/*
 !/modules/*.md
 !/modules/*.sh
 !/modules/CMakeLists.txt
@@ -92,3 +91,7 @@ local.properties
 #  !modules/yourmodule
 #
 # ==================
+
+#NPCBots
+!/data/sql/custom/db_characters/
+!/data/sql/custom/db_world/

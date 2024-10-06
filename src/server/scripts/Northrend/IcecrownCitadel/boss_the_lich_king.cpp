@@ -387,7 +387,10 @@ public:
         if (!target->IsAlive())
             return false;
         if (_playerOnly && !target->IsPlayer())
-            return false;
+            //npcbot: allow to target bots
+            if (!target->IsNPCBot())
+            //end npcbot
+                return false;
         if (_maxDist && _source->GetExactDist(target) > _maxDist)
             return false;
         if (_reqLOS && !_source->IsWithinLOSInMap(target))
@@ -413,7 +416,10 @@ public:
         if (!target->IsAlive())
             return false;
         if (_playerOnly && !target->IsPlayer())
-            return false;
+            //npcbot: allow to target bots
+            if (!(target->IsNPCBot()))
+            //end npcbot
+                return false;
         if (target == _source->GetVictim())
             return false;
         if (target->HasAura(SPELL_BOSS_HITTIN_YA_AURA))
@@ -704,7 +710,7 @@ public:
             me->SetInCombatWithZone();
             me->RemoveAurasDueToSpell(SPELL_EMOTE_SIT_NO_SHEATH); // just to be sure
 
-            events.ScheduleEvent(EVENT_BERSERK, 15min, EVENT_GROUP_BERSERK);
+            events.ScheduleEvent(EVENT_BERSERK, 22min, EVENT_GROUP_BERSERK);
             events.ScheduleEvent(EVENT_SUMMON_SHAMBLING_HORROR, 15s, EVENT_GROUP_ABILITIES);
             events.ScheduleEvent(EVENT_SUMMON_DRUDGE_GHOUL, 10s, EVENT_GROUP_ABILITIES);
             events.ScheduleEvent(EVENT_INFEST, 5s, EVENT_GROUP_ABILITIES);
@@ -795,7 +801,7 @@ public:
                 return;
             }
 
-            if (_phase == PHASE_THREE && HealthBelowPct(10) && !me->HasUnitState(UNIT_STATE_CASTING))
+            if (HealthBelowPct(10) && !me->HasUnitState(UNIT_STATE_CASTING))
             {
                 _phase = PHASE_OUTRO;
                 EntryCheckPredicate pred(NPC_STRANGULATE_VEHICLE);
@@ -945,8 +951,8 @@ public:
                     //events.DelayEvents(62500, EVENT_GROUP_BERSERK); // delay berserk timer, its not ticking during phase transitions, 15mins on movies
                     events.ScheduleEvent(EVENT_QUAKE, 62s + 500ms);
                     events.ScheduleEvent(EVENT_PAIN_AND_SUFFERING, 3500ms, EVENT_GROUP_ABILITIES);
-                    events.ScheduleEvent(EVENT_SUMMON_ICE_SPHERE, 8s, EVENT_GROUP_ABILITIES);
-                    events.ScheduleEvent(EVENT_SUMMON_RAGING_SPIRIT, 4s, EVENT_GROUP_ABILITIES);
+                    //events.ScheduleEvent(EVENT_SUMMON_ICE_SPHERE, 8s, EVENT_GROUP_ABILITIES);
+                    //events.ScheduleEvent(EVENT_SUMMON_RAGING_SPIRIT, 4s, EVENT_GROUP_ABILITIES);
                     break;
                 case POINT_CENTER_2:
                     me->SetFacingTo(0.0f);
@@ -957,8 +963,8 @@ public:
                     //events.DelayEvents(62500, EVENT_GROUP_BERSERK); // delay berserk timer, its not ticking during phase transitions, 15 mins on movies
                     events.ScheduleEvent(EVENT_QUAKE_2, 62s + 500ms);
                     events.ScheduleEvent(EVENT_PAIN_AND_SUFFERING, 3500ms, EVENT_GROUP_ABILITIES);
-                    events.ScheduleEvent(EVENT_SUMMON_ICE_SPHERE, 8s, EVENT_GROUP_ABILITIES);
-                    events.ScheduleEvent(EVENT_SUMMON_RAGING_SPIRIT, 4s, EVENT_GROUP_ABILITIES);
+                    //events.ScheduleEvent(EVENT_SUMMON_ICE_SPHERE, 8s, EVENT_GROUP_ABILITIES);
+                    //events.ScheduleEvent(EVENT_SUMMON_RAGING_SPIRIT, 4s, EVENT_GROUP_ABILITIES);
                     break;
                 default:
                     break;
@@ -1037,7 +1043,7 @@ public:
                     events.ScheduleEvent(EVENT_SOUL_REAPER, 40s, EVENT_GROUP_ABILITIES);
                     events.ScheduleEvent(EVENT_DEFILE, 38s, EVENT_GROUP_ABILITIES);
                     events.ScheduleEvent(EVENT_VILE_SPIRITS, 20s, EVENT_GROUP_VILE_SPIRITS);
-                    events.ScheduleEvent(IsHeroic() ? EVENT_HARVEST_SOULS : EVENT_HARVEST_SOUL, 14s, EVENT_GROUP_ABILITIES);
+                    //events.ScheduleEvent(IsHeroic() ? EVENT_HARVEST_SOULS : EVENT_HARVEST_SOUL, 14s, EVENT_GROUP_ABILITIES);
 
                     me->InterruptNonMeleeSpells(false);
                     me->ClearUnitState(UNIT_STATE_CASTING);
@@ -2701,6 +2707,9 @@ class spell_the_lich_king_valkyr_target_search : public SpellScript
             targets.clear();
             return;
         }
+            //npcbot
+            targets.remove_if(Acore::ObjectTypeIdCheck(TYPEID_PLAYER, false));
+            //end npcbot
         targets.remove_if(Acore::UnitAuraCheck(true, GetSpellInfo()->Id));
         targets.remove_if(Acore::UnitAuraCheck(true, SPELL_BOSS_HITTIN_YA_AURA)); // done in dbc, but just to be sure xd
         targets.remove_if(Acore::UnitAuraCheck(true, SPELL_HARVEST_SOUL_VALKYR));

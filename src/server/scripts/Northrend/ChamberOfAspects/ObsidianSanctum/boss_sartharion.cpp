@@ -1042,7 +1042,7 @@ public:
 
             events.ScheduleEvent(EVENT_MINIBOSS_SHADOW_FISSURE, 20s);
             events.ScheduleEvent(EVENT_MINIBOSS_SHADOW_BREATH, 10s);
-            events.ScheduleEvent(EVENT_MINIBOSS_OPEN_PORTAL, 15s);
+            //events.ScheduleEvent(EVENT_MINIBOSS_OPEN_PORTAL, 15s);
         }
 
         void JustSummoned(Creature* summon) override
@@ -1220,7 +1220,7 @@ public:
             boss_sartharion_dragonAI::Reset();
             events.ScheduleEvent(EVENT_MINIBOSS_SHADOW_FISSURE, 20s);
             events.ScheduleEvent(EVENT_MINIBOSS_SHADOW_BREATH, 10s);
-            events.ScheduleEvent(EVENT_MINIBOSS_OPEN_PORTAL, 15s);
+            //events.ScheduleEvent(EVENT_MINIBOSS_OPEN_PORTAL, 15s);
         }
 
         void SummonedCreatureDies(Creature* /*summon*/, Unit* /*summon*/) override
@@ -1244,7 +1244,7 @@ public:
                 me->RemoveAura(SPELL_GIFT_OF_TWILIGHT_SHADOW);
             }
 
-            events.ScheduleEvent(EVENT_MINIBOSS_OPEN_PORTAL, 30s);
+            //events.ScheduleEvent(EVENT_MINIBOSS_OPEN_PORTAL, 30s);
         }
 
         void HandleExtraEvent(uint32 const eventId) override
@@ -1345,7 +1345,7 @@ public:
             boss_sartharion_dragonAI::Reset();
             events.ScheduleEvent(EVENT_MINIBOSS_SHADOW_FISSURE, 20s);
             events.ScheduleEvent(EVENT_MINIBOSS_SHADOW_BREATH, 10s);
-            events.ScheduleEvent(EVENT_MINIBOSS_OPEN_PORTAL, 30s);
+            //events.ScheduleEvent(EVENT_MINIBOSS_OPEN_PORTAL, 30s);
         }
 
         void SummonedCreatureDies(Creature* /*summon*/, Unit* /*killer*/) override
@@ -1360,7 +1360,7 @@ public:
                 instance->DoAction(ACTION_CLEAR_PORTAL);
             }
 
-            events.ScheduleEvent(EVENT_MINIBOSS_OPEN_PORTAL, 30s);
+            //events.ScheduleEvent(EVENT_MINIBOSS_OPEN_PORTAL, 30s);
         }
 
         void HandleExtraEvent(uint32 const eventId) override

@@ -55,7 +55,7 @@ enum Gossip_Option
     GOSSIP_OPTION_MAX
 };
 
-enum GossipOptionIcon
+enum GossipOptionIcon : uint8
 {
     GOSSIP_ICON_CHAT                = 0,                    // white chat bubble
     GOSSIP_ICON_VENDOR              = 1,                    // brown bag
@@ -287,9 +287,13 @@ public:
     void SendQuestGiverOfferReward(Quest const* quest, ObjectGuid npcGUID, bool enableNext) const;
     void SendQuestGiverRequestItems(Quest const* quest, ObjectGuid npcGUID, bool canComplete, bool closeOnCancel) const;
 
+    uint32 CalculateCustomQuestXpExtras(Player* player, uint32 questXp) const;
 private:
     GossipMenu _gossipMenu;
     QuestMenu  _questMenu;
     WorldSession* _session;
+
+    float GetXpWeekendExperienceRate(Player* player) const;
+    bool IsXpWeekendEventActive() const;
 };
 #endif

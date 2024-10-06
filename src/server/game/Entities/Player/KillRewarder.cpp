@@ -22,6 +22,13 @@
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "SpellAuraEffects.h"
+#include "LFGGroupData.h"
+//Todo: eww
+#include "../../../../modules/mod-Individual-Progression/src/IndividualProgression.h"
+
+//npcbot
+#include "botmgr.h"
+//end npcbot
 
 // KillRewarder incapsulates logic of rewarding player upon kill with:
 // * XP;
@@ -72,6 +79,10 @@ KillRewarder::KillRewarder(Player* killer, Unit* victim, bool isBattleGround) :
     // mark the credit as pvp if victim is player
     if (victim->IsPlayer())
         _isPvP = true;
+    //npcbot
+    else if (victim->IsNPCBotOrPet())
+        _isPvP = true;
+    //end npcbot
         // or if its owned by player and its not a vehicle
     else if (victim->GetCharmerOrOwnerGUID().IsPlayer())
         _isPvP = !victim->IsVehicle();
@@ -165,6 +176,54 @@ void KillRewarder::_RewardXP(Player* player, float rate)
         Unit::AuraEffectList const& auras = player->GetAuraEffectsByType(SPELL_AURA_MOD_XP_PCT);
         for (Unit::AuraEffectList::const_iterator i = auras.begin(); i != auras.end(); ++i)
             AddPct(xp, (*i)->GetAmount());
+
+        //npcbot 4.2.2.1. Apply NpcBot XP reduction
+        uint8 bots_count = 0;
+        if (_group)
+        {
+            for (GroupReference const* itr = _group->GetFirstMember(); itr != nullptr; itr = itr->next())
+            {
+                if (Player const* gPlayer = itr->GetSource())
+                    bots_count = std::max<uint8>(bots_count, gPlayer->GetNpcBotsCount());
+            }
+        }
+        else
+            bots_count = player->GetNpcBotsCount();
+        uint8 xp_reduction = BotMgr::GetNpcBotXpReduction();
+        uint8 xp_reduction_start = BotMgr::GetNpcBotXpReductionStartingNumber();
+        if (xp_reduction_start > 0 && xp_reduction > 0 && bots_count >= xp_reduction_start)
+        {
+            uint32 ratePct = std::max<int32>(100 - ((bots_count - (xp_reduction_start - 1)) * xp_reduction), 10);
+            xp = xp * ratePct / 100;
+        }
+        //end npcbot
+
+        // Boxhead Custom | Add more xp for rares
+        if (Creature* victim = _victim->ToCreature())
+        {
+            if (victim->GetCreatureTemplate()->rank == CREATURE_ELITE_RARE || victim->GetCreatureTemplate()->rank == CREATURE_ELITE_RAREELITE)
+                xp *= 12.5;
+        }
+
+        // Boxhead Custom | Give more xp depending on individual progression
+        // > Vanilla xp boost
+        if (sIndividualProgression->enabled && sIndividualProgression->hasPassedProgression(player, PROGRESSION_NAXX40) && !sIndividualProgression->hasPassedProgression(player, PROGRESSION_TBC_TIER_5) && player->GetLevel() < 60)
+            xp *= 1.5;
+
+        // > TBC xp boost
+        if (sIndividualProgression->enabled && sIndividualProgression->hasPassedProgression(player, PROGRESSION_TBC_TIER_5) && !sIndividualProgression->hasPassedProgression(player, PROGRESSION_WOTLK_TIER_5) && player->GetLevel() < 70)
+            xp *= 2.25;
+
+        // > WotLK xp boost
+        if (sIndividualProgression->enabled && sIndividualProgression->hasPassedProgression(player, PROGRESSION_WOTLK_TIER_5) && player->GetLevel() < 80)
+            xp *= 3.0;
+
+        // Don't give XP outside of dungeons if in LFG Group now
+        if (Group* gr = player->GetGroup())
+        {
+            if (player->GetGroup()->isLFGGroup() && !player->GetMap()->IsDungeon())
+                xp = 0;
+        }
 
         // 4.2.3. Give XP to player.
         sScriptMgr->OnGivePlayerXP(player, xp, _victim, PlayerXPSource::XPSOURCE_KILL);
