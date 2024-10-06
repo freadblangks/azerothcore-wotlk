@@ -497,6 +497,11 @@ uint32 AuctionHouseBot::getMaxStackCount(AHBConfig* config, const Item* item, co
         return 1;
     }
 
+    if (prototype->Class == ITEM_CLASS_QUEST)
+    {
+        return 1;
+    }
+
     if (config->GetMaxStack(prototype->Quality) > 1)
     {
        return urand(1, minValue(item->GetMaxStackCount(), config->GetMaxStack(prototype->Quality)));
@@ -723,8 +728,24 @@ double AuctionHouseBot::getCustomScaling(const ItemTemplate* item)
 {
     if (item->Class == ITEM_CLASS_GLYPH)
     {
-        return 25000;
+        return 250000;
     }
+
+    if (item->Class == ITEM_CLASS_GEM)
+    {
+        return 2500;
+    }
+
+    if (item->Class == ITEM_CLASS_QUEST)
+    {
+        return 5000;
+    }
+
+    if (item->Class == ITEM_CLASS_CONTAINER)
+    {
+        return 2000;
+    }
+
 
     if (item->Class == ITEM_CLASS_TRADE_GOODS)
     {
