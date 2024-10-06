@@ -1,5 +1,4 @@
-DELETE FROM `mod_auctionhousebot_disabled_items`;
-INSERT INTO `mod_auctionhousebot_disabled_items` (`item`) VALUES
+INSERT IGNORE INTO `mod_auctionhousebot_disabled_items` (`item`) VALUES
 	(17),
 	(37),
 	(88),
