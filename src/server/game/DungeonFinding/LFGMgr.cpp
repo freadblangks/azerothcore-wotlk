@@ -1749,7 +1749,8 @@ namespace lfg
             //npcbot - handle player's bots
             //Boxhead: Spawn needed random npc bots into group
             uint8 botsNeeded = 5 - players.size();
-            if (BotMgr::FillNpcBotsDungeons() && botsNeeded > 0)
+            Group* group = player->GetGroup();
+            if (BotMgr::FillNpcBotsDungeons() && botsNeeded > 0 && (!group || group->IsLeader(player->GetGUID())))
             {
                 NpcBotRegistry allBots = _existingBots;
                 while (botsNeeded > 0)
@@ -1886,7 +1887,7 @@ namespace lfg
 
             if (player->HaveBot())
             {
-                Group* group = player->GetGroup();
+                group = player->GetGroup();
                 if (isPremadeGroup && !grp)
                 {
                     oldGroupGUID = group->GetGUID();
@@ -1965,7 +1966,7 @@ namespace lfg
             }
             //end npcbot
 
-            Group* group = player->GetGroup();
+            group = player->GetGroup();
             if (isPremadeGroup && !grp)
             {
                 oldGroupGUID = group->GetGUID();
