@@ -77,6 +77,7 @@ struct boss_curator : public BossAI
 
     void JustDied(Unit* killer) override
     {
+        instance->SetBossState(DATA_CURATOR, DONE);
         BossAI::JustDied(killer);
         Talk(SAY_DEATH);
     }
