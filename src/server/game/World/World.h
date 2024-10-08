@@ -31,7 +31,6 @@
 #include <atomic>
 #include <list>
 #include <map>
-#include <set>
 #include <unordered_map>
 
 class Object;
@@ -43,13 +42,13 @@ struct Realm;
 
 AC_GAME_API extern Realm realm;
 
-enum ShutdownMask
+enum ShutdownMask : uint8
 {
     SHUTDOWN_MASK_RESTART = 1,
     SHUTDOWN_MASK_IDLE    = 2,
 };
 
-enum ShutdownExitCode
+enum ShutdownExitCode : uint8
 {
     SHUTDOWN_EXIT_CODE = 0,
     ERROR_EXIT_CODE    = 1,
@@ -238,16 +237,11 @@ public:
     void SetInitialWorldSettings() override;
     void LoadConfigSettings(bool reload = false) override;
 
-    void SendWorldText(uint32 string_id, ...) override;
-    void SendGlobalText(const char* text, WorldSession* self) override;
-    void SendGMText(uint32 string_id, ...) override;
     void SendGlobalMessage(WorldPacket const* packet, WorldSession* self = nullptr, TeamId teamId = TEAM_NEUTRAL) override;
     void SendGlobalGMMessage(WorldPacket const* packet, WorldSession* self = nullptr, TeamId teamId = TEAM_NEUTRAL) override;
     bool SendZoneMessage(uint32 zone, WorldPacket const* packet, WorldSession* self = nullptr, TeamId teamId = TEAM_NEUTRAL) override;
     void SendZoneText(uint32 zone, const char* text, WorldSession* self = nullptr, TeamId teamId = TEAM_NEUTRAL) override;
     void SendServerMessage(ServerMessageType messageID, std::string stringParam = "", Player* player = nullptr) override;
-
-    void SendWorldTextOptional(uint32 string_id, uint32 flag, ...) override;
 
     /// Are we in the middle of a shutdown?
     [[nodiscard]] bool IsShuttingDown() const override { return _shutdownTimer > 0; }
@@ -322,10 +316,6 @@ public:
     static float GetMaxVisibleDistanceInInstances()     { return _maxVisibleDistanceInInstances;  }
     static float GetMaxVisibleDistanceInBGArenas()      { return _maxVisibleDistanceInBGArenas;   }
 
-    static int32 GetVisibilityNotifyPeriodOnContinents() { return m_visibility_notify_periodOnContinents; }
-    static int32 GetVisibilityNotifyPeriodInInstances()  { return m_visibility_notify_periodInInstances;  }
-    static int32 GetVisibilityNotifyPeriodInBGArenas()   { return m_visibility_notify_periodInBGArenas;   }
-
     // our: needed for arena spectator subscriptions
     uint32 GetNextWhoListUpdateDelaySecs() override;
 
@@ -341,6 +331,9 @@ public:
     // used World DB version
     void LoadDBVersion() override;
     [[nodiscard]] char const* GetDBVersion() const override { return _dbVersion.c_str(); }
+#ifdef MOD_PLAYERBOTS
+    [[nodiscard]] char const* GetPlayerbotsDBRevision() const override { return m_PlayerbotsDBRevision.c_str(); }
+#endif
 
     void UpdateAreaDependentAuras() override;
 
@@ -352,6 +345,8 @@ public:
     void SetRealmName(std::string name) override { _realmName = name; } // pussywizard
 
     void RemoveOldCorpses() override;
+
+    void DoForAllOnlinePlayers(std::function<void(Player*)> exec) override;
 
 protected:
     void _UpdateGameTime();
@@ -370,6 +365,9 @@ protected:
     void ResetRandomBG();
     void CalendarDeleteOldEvents();
     void ResetGuildCap();
+
+    SQLQueryHolderCallback& AddQueryHolderCallback(SQLQueryHolderCallback&& callback) override;
+
 private:
     static std::atomic_long _stopEvent;
     static uint8 _exitCode;
@@ -413,10 +411,6 @@ private:
     static float _maxVisibleDistanceInInstances;
     static float _maxVisibleDistanceInBGArenas;
 
-    static int32 m_visibility_notify_periodOnContinents;
-    static int32 m_visibility_notify_periodInInstances;
-    static int32 m_visibility_notify_periodInBGArenas;
-
     std::string _realmName;
 
     // CLI command holder to be thread safe
@@ -439,9 +433,13 @@ private:
 
     // used versions
     std::string _dbVersion;
+#ifdef MOD_PLAYERBOTS
+    std::string m_PlayerbotsDBRevision;
+#endif
 
     void ProcessQueryCallbacks();
     QueryCallbackProcessor _queryProcessor;
+    AsyncCallbackProcessor<SQLQueryHolderCallback> _queryHolderProcessor;
 
     /**
      * @brief Executed when a World Session is being finalized. Be it from a normal login or via queue popping.

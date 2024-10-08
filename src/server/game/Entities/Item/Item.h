@@ -35,8 +35,14 @@ struct ItemSetEffect
     SpellInfo const* spells[8];
 };
 
+enum InventorySlot
+{
+    NULL_BAG    = 0,
+    NULL_SLOT   = 255
+};
+
 // EnumUtils: DESCRIBE THIS
-enum InventoryResult
+enum InventoryResult : uint8
 {
     EQUIP_ERR_OK                                 = 0,
     EQUIP_ERR_CANT_EQUIP_LEVEL_I                 = 1,
@@ -158,7 +164,7 @@ enum SellResult
 };
 
 // -1 from client enchantment slot number
-enum EnchantmentSlot
+enum EnchantmentSlot : uint8
 {
     PERM_ENCHANTMENT_SLOT           = 0,
     TEMP_ENCHANTMENT_SLOT           = 1,
@@ -213,7 +219,7 @@ bool ItemCanGoIntoBag(ItemTemplate const* proto, ItemTemplate const* pBagProto);
 class Item : public Object
 {
 public:
-    static Item* CreateItem(uint32 item, uint32 count, Player const* player = nullptr, bool clone = false, uint32 randomPropertyId = 0);
+    static Item* CreateItem(uint32 item, uint32 count, Player const* player = nullptr, bool clone = false, uint32 randomPropertyId = 0, bool temp = false);
     Item* CloneItem(uint32 count, Player const* player = nullptr) const;
 
     Item();
@@ -228,7 +234,7 @@ public:
 
     void SetBinding(bool val) { ApplyModFlag(ITEM_FIELD_FLAGS, ITEM_FIELD_FLAG_SOULBOUND, val); }
     [[nodiscard]] bool IsSoulBound() const { return HasFlag(ITEM_FIELD_FLAGS, ITEM_FIELD_FLAG_SOULBOUND); }
-    [[nodiscard]] bool IsBoundAccountWide() const { return (GetTemplate()->Flags & ITEM_FLAG_IS_BOUND_TO_ACCOUNT) != 0; }
+    [[nodiscard]] bool IsBoundAccountWide() const { return GetTemplate()->HasFlag(ITEM_FLAG_IS_BOUND_TO_ACCOUNT) != 0; }
     bool IsBindedNotWith(Player const* player) const;
     [[nodiscard]] bool IsBoundByEnchant() const;
     [[nodiscard]] bool IsBoundByTempEnchant() const;
@@ -252,6 +258,9 @@ public:
     [[nodiscard]] bool CanBeTraded(bool mail = false, bool trade = false) const;
     void SetInTrade(bool b = true) { mb_in_trade = b; }
     [[nodiscard]] bool IsInTrade() const { return mb_in_trade; }
+    [[nodiscard]] bool IsRefundable() const { return HasFlag(ITEM_FIELD_FLAGS, ITEM_FIELD_FLAG_REFUNDABLE); }
+    [[nodiscard]] bool IsBOPTradable() const { return HasFlag(ITEM_FIELD_FLAGS, ITEM_FIELD_FLAG_BOP_TRADEABLE); }
+    [[nodiscard]] bool IsWrapped() const { return HasFlag(ITEM_FIELD_FLAGS, ITEM_FIELD_FLAG_WRAPPED); }
 
     bool HasEnchantRequiredSkill(Player const* player) const;
     [[nodiscard]] uint32 GetEnchantRequiredLevel() const;

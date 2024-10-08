@@ -233,7 +233,7 @@ int main(int argc, char** argv)
     signals.async_wait(SignalHandler);
 
     // Start the Boost based thread pool
-    int numThreads = sConfigMgr->GetOption<int32>("ThreadPool", 1);
+    int numThreads = sConfigMgr->GetOption<int32>("ThreadPool", 2);
     std::shared_ptr<std::vector<std::thread>> threadPool(new std::vector<std::thread>(), [ioContext](std::vector<std::thread>* del)
     {
         ioContext->stop();
@@ -257,7 +257,7 @@ int main(int argc, char** argv)
     }
 
     // Set process priority according to configuration settings
-    SetProcessPriority("server.worldserver", sConfigMgr->GetOption<int32>(CONFIG_PROCESSOR_AFFINITY, 0), sConfigMgr->GetOption<bool>(CONFIG_HIGH_PRIORITY, false));
+    SetProcessPriority("server.worldserver", sConfigMgr->GetOption<int32>(CONFIG_PROCESSOR_AFFINITY, 0), sConfigMgr->GetOption<bool>(CONFIG_HIGH_PRIORITY, true));
 
     // Loading modules configs before scripts
     sConfigMgr->LoadModulesConfigs();
@@ -291,6 +291,7 @@ int main(int argc, char** argv)
         METRIC_VALUE("db_queue_login", uint64(LoginDatabase.QueueSize()));
         METRIC_VALUE("db_queue_character", uint64(CharacterDatabase.QueueSize()));
         METRIC_VALUE("db_queue_world", uint64(WorldDatabase.QueueSize()));
+        sScriptMgr->OnMetricLogging();
     });
 
     METRIC_EVENT("events", "Worldserver started", "");
@@ -386,15 +387,6 @@ int main(int argc, char** argv)
 
     sScriptMgr->OnStartup();
 
-// Be kind and warn people of EOL deprecation :)
-#if !defined(MARIADB_VERSION_ID)
-    if (MySQL::GetLibraryVersion() < 80000)
-        LOG_WARN("server", "WARNING: You are using MySQL version 5.7 which is soon EOL!\nThis version will be deprecated. Consider upgrading to MySQL 8.0 or 8.1!");
-#endif
-#if OPENSSL_VERSION_NUMBER < 0x30000000L
-    LOG_WARN("server", "WARNING: You are using OpenSSL version 1.1 which is soon EOL!\nThis version will be deprecated. Consider upgrading to OpenSSL 3.0 or 3.1!");
-#endif
-
     // Launch CliRunnable thread
     std::shared_ptr<std::thread> cliThread;
 #if AC_PLATFORM == AC_PLATFORM_WINDOWS
@@ -451,6 +443,11 @@ bool StartDB()
     if (!loader.Load())
         return false;
 
+    if (!sScriptMgr->OnDatabasesLoading())
+    {
+        return false;
+    }
+
     ///- Get the realm Id from the configuration file
     realm.Id.Realm = sConfigMgr->GetOption<uint32>("RealmID", 0);
     if (!realm.Id.Realm)
@@ -492,6 +489,8 @@ void StopDB()
     CharacterDatabase.Close();
     WorldDatabase.Close();
     LoginDatabase.Close();
+
+    sScriptMgr->OnDatabasesClosing();
 
     MySQL::Library_End();
 }
@@ -583,6 +582,8 @@ void WorldUpdateLoop()
     CharacterDatabase.WarnAboutSyncQueries(true);
     WorldDatabase.WarnAboutSyncQueries(true);
 
+    sScriptMgr->OnDatabaseWarnAboutSyncQueries(true);
+
     ///- While we have not World::m_stopEvent, update the world
     while (!World::IsStopped())
     {
@@ -611,6 +612,8 @@ void WorldUpdateLoop()
             Sleep(1000);
 #endif
     }
+
+    sScriptMgr->OnDatabaseWarnAboutSyncQueries(false);
 
     LoginDatabase.WarnAboutSyncQueries(false);
     CharacterDatabase.WarnAboutSyncQueries(false);

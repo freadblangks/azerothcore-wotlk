@@ -20,6 +20,7 @@
 
 #include "ArenaTeam.h"
 #include "Battleground.h"
+#include "CharmInfo.h"
 #include "CharacterCache.h"
 #include "CinematicMgr.h"
 #include "DBCStores.h"
@@ -28,7 +29,6 @@
 #include "GroupReference.h"
 #include "InstanceSaveMgr.h"
 #include "Item.h"
-#include "KillRewarder.h"
 #include "MapReference.h"
 #include "ObjectMgr.h"
 #include "Optional.h"
@@ -37,7 +37,6 @@
 #include "PlayerTaxi.h"
 #include "QuestDef.h"
 #include "SpellAuras.h"
-#include "SpellMgr.h"
 #include "SpellInfo.h"
 #include "TradeData.h"
 #include "Unit.h"
@@ -670,7 +669,7 @@ enum PlayerSlots
 
 #define INVENTORY_SLOT_BAG_0    255
 
-enum EquipmentSlots                                         // 19 slots
+enum EquipmentSlots : uint32                                 // 19 slots
 {
     EQUIPMENT_SLOT_START        = 0,
     EQUIPMENT_SLOT_HEAD         = 0,
@@ -721,7 +720,7 @@ enum BankBagSlots                                           // 7 slots
 
 enum BuyBackSlots                                           // 12 slots
 {
-    // stored in m_buybackitems
+    // stored in m_items, there is no more m_buybackitems
     BUYBACK_SLOT_START          = 74,
     BUYBACK_SLOT_END            = 86
 };
@@ -770,6 +769,14 @@ struct ItemPosCount
     uint32 count;
 };
 typedef std::vector<ItemPosCount> ItemPosCountVec;
+
+struct SavedItem
+{
+    Item* item;
+    uint16 dstpos;
+
+    SavedItem(Item* _item, uint16 dstpos) : item(_item), dstpos(dstpos) {}
+};
 
 enum TransferAbortReason
 {
@@ -833,16 +840,6 @@ enum EnviromentalDamage
     DAMAGE_FALL_TO_VOID = 6                                 // custom case for fall without durability loss
 };
 
-enum PlayerChatTag
-{
-    CHAT_TAG_NONE       = 0x00,
-    CHAT_TAG_AFK        = 0x01,
-    CHAT_TAG_DND        = 0x02,
-    CHAT_TAG_GM         = 0x04,
-    CHAT_TAG_COM        = 0x08, // Commentator tag. Do not exist in clean client
-    CHAT_TAG_DEV        = 0x10,
-};
-
 enum PlayedTimeIndex
 {
     PLAYED_TIME_TOTAL = 0,
@@ -854,39 +851,40 @@ enum PlayedTimeIndex
 // used at player loading query list preparing, and later result selection
 enum PlayerLoginQueryIndex
 {
-    PLAYER_LOGIN_QUERY_LOAD_FROM                    = 0,
-    PLAYER_LOGIN_QUERY_LOAD_AURAS                   = 3,
-    PLAYER_LOGIN_QUERY_LOAD_SPELLS                  = 4,
-    PLAYER_LOGIN_QUERY_LOAD_QUEST_STATUS            = 5,
-    PLAYER_LOGIN_QUERY_LOAD_DAILY_QUEST_STATUS      = 6,
-    PLAYER_LOGIN_QUERY_LOAD_REPUTATION              = 7,
-    PLAYER_LOGIN_QUERY_LOAD_INVENTORY               = 8,
-    PLAYER_LOGIN_QUERY_LOAD_ACTIONS                 = 9,
-    PLAYER_LOGIN_QUERY_LOAD_MAILS                   = 10,
-    PLAYER_LOGIN_QUERY_LOAD_MAIL_ITEMS              = 11,
-    PLAYER_LOGIN_QUERY_LOAD_SOCIAL_LIST             = 13,
-    PLAYER_LOGIN_QUERY_LOAD_HOME_BIND               = 14,
-    PLAYER_LOGIN_QUERY_LOAD_SPELL_COOLDOWNS         = 15,
-    PLAYER_LOGIN_QUERY_LOAD_DECLINED_NAMES          = 16,
-    PLAYER_LOGIN_QUERY_LOAD_ACHIEVEMENTS            = 18,
-    PLAYER_LOGIN_QUERY_LOAD_CRITERIA_PROGRESS       = 19,
-    PLAYER_LOGIN_QUERY_LOAD_EQUIPMENT_SETS          = 20,
-    PLAYER_LOGIN_QUERY_LOAD_ENTRY_POINT             = 21,
-    PLAYER_LOGIN_QUERY_LOAD_GLYPHS                  = 22,
-    PLAYER_LOGIN_QUERY_LOAD_TALENTS                 = 23,
-    PLAYER_LOGIN_QUERY_LOAD_ACCOUNT_DATA            = 24,
-    PLAYER_LOGIN_QUERY_LOAD_SKILLS                  = 25,
-    PLAYER_LOGIN_QUERY_LOAD_WEEKLY_QUEST_STATUS     = 26,
-    PLAYER_LOGIN_QUERY_LOAD_RANDOM_BG               = 27,
-    PLAYER_LOGIN_QUERY_LOAD_BANNED                  = 28,
-    PLAYER_LOGIN_QUERY_LOAD_QUEST_STATUS_REW        = 29,
-    PLAYER_LOGIN_QUERY_LOAD_INSTANCE_LOCK_TIMES     = 30,
-    PLAYER_LOGIN_QUERY_LOAD_SEASONAL_QUEST_STATUS   = 31,
-    PLAYER_LOGIN_QUERY_LOAD_MONTHLY_QUEST_STATUS    = 32,
-    PLAYER_LOGIN_QUERY_LOAD_BREW_OF_THE_MONTH       = 34,
-    PLAYER_LOGIN_QUERY_LOAD_CORPSE_LOCATION         = 35,
-    PLAYER_LOGIN_QUERY_LOAD_CHARACTER_SETTINGS      = 36,
-    PLAYER_LOGIN_QUERY_LOAD_PET_SLOTS               = 37,
+    PLAYER_LOGIN_QUERY_LOAD_FROM                         = 0,
+    PLAYER_LOGIN_QUERY_LOAD_AURAS                        = 3,
+    PLAYER_LOGIN_QUERY_LOAD_SPELLS                       = 4,
+    PLAYER_LOGIN_QUERY_LOAD_QUEST_STATUS                 = 5,
+    PLAYER_LOGIN_QUERY_LOAD_DAILY_QUEST_STATUS           = 6,
+    PLAYER_LOGIN_QUERY_LOAD_REPUTATION                   = 7,
+    PLAYER_LOGIN_QUERY_LOAD_INVENTORY                    = 8,
+    PLAYER_LOGIN_QUERY_LOAD_ACTIONS                      = 9,
+    PLAYER_LOGIN_QUERY_LOAD_MAILS                        = 10,
+    PLAYER_LOGIN_QUERY_LOAD_MAIL_ITEMS                   = 11,
+    PLAYER_LOGIN_QUERY_LOAD_SOCIAL_LIST                  = 13,
+    PLAYER_LOGIN_QUERY_LOAD_HOME_BIND                    = 14,
+    PLAYER_LOGIN_QUERY_LOAD_SPELL_COOLDOWNS              = 15,
+    PLAYER_LOGIN_QUERY_LOAD_DECLINED_NAMES               = 16,
+    PLAYER_LOGIN_QUERY_LOAD_ACHIEVEMENTS                 = 18,
+    PLAYER_LOGIN_QUERY_LOAD_CRITERIA_PROGRESS            = 19,
+    PLAYER_LOGIN_QUERY_LOAD_EQUIPMENT_SETS               = 20,
+    PLAYER_LOGIN_QUERY_LOAD_ENTRY_POINT                  = 21,
+    PLAYER_LOGIN_QUERY_LOAD_GLYPHS                       = 22,
+    PLAYER_LOGIN_QUERY_LOAD_TALENTS                      = 23,
+    PLAYER_LOGIN_QUERY_LOAD_ACCOUNT_DATA                 = 24,
+    PLAYER_LOGIN_QUERY_LOAD_SKILLS                       = 25,
+    PLAYER_LOGIN_QUERY_LOAD_WEEKLY_QUEST_STATUS          = 26,
+    PLAYER_LOGIN_QUERY_LOAD_RANDOM_BG                    = 27,
+    PLAYER_LOGIN_QUERY_LOAD_BANNED                       = 28,
+    PLAYER_LOGIN_QUERY_LOAD_QUEST_STATUS_REW             = 29,
+    PLAYER_LOGIN_QUERY_LOAD_INSTANCE_LOCK_TIMES          = 30,
+    PLAYER_LOGIN_QUERY_LOAD_SEASONAL_QUEST_STATUS        = 31,
+    PLAYER_LOGIN_QUERY_LOAD_MONTHLY_QUEST_STATUS         = 32,
+    PLAYER_LOGIN_QUERY_LOAD_BREW_OF_THE_MONTH            = 34,
+    PLAYER_LOGIN_QUERY_LOAD_CORPSE_LOCATION              = 35,
+    PLAYER_LOGIN_QUERY_LOAD_CHARACTER_SETTINGS           = 36,
+    PLAYER_LOGIN_QUERY_LOAD_PET_SLOTS                    = 37,
+    PLAYER_LOGIN_QUERY_LOAD_OFFLINE_ACHIEVEMENTS_UPDATES = 38,
     MAX_PLAYER_LOGIN_QUERY
 };
 
@@ -1104,6 +1102,8 @@ public:
 
     static bool BuildEnumData(PreparedQueryResult result, WorldPacket* data);
 
+    [[nodiscard]] bool IsClass(Classes playerClass, ClassContext context = CLASS_CONTEXT_NONE) const override;
+
     void SetInWater(bool apply);
 
     [[nodiscard]] bool IsInWater() const override { return m_isInWater; }
@@ -1161,6 +1161,8 @@ public:
     void GiveLevel(uint8 level);
 
     void InitStatsForLevel(bool reapplyMods = false);
+
+    [[nodiscard]] bool HasActivePowerType(Powers power) override;
 
     // .cheat command related
     [[nodiscard]] bool GetCommandStatus(uint32 command) const { return _activeCheats & command; }
@@ -1236,6 +1238,8 @@ public:
         return GetItemByPos(bag, slot);
     }
     [[nodiscard]] Item* GetWeaponForAttack(WeaponAttackType attackType, bool useable = false) const;
+    bool HasWeapon(WeaponAttackType type) const override { return GetWeaponForAttack(type, false); }
+    bool HasWeaponForAttack(WeaponAttackType type) const override { return (Unit::HasWeaponForAttack(type) && GetWeaponForAttack(type, true)); }
     [[nodiscard]] Item* GetShield(bool useable = false) const;
     static uint8 GetAttackBySlot(uint8 slot);        // MAX_ATTACK if not weapon slot
     std::vector<Item*>& GetItemUpdateQueue() { return m_itemUpdateQueue; }
@@ -1439,6 +1443,7 @@ public:
     bool SatisfyQuestSeasonal(Quest const* qInfo, bool msg) const;
     bool GiveQuestSourceItem(Quest const* quest);
     bool TakeQuestSourceItem(uint32 questId, bool msg);
+    uint32 CalculateQuestRewardXP(Quest const* quest);
     [[nodiscard]] bool GetQuestRewardStatus(uint32 quest_id) const;
     [[nodiscard]] QuestStatus GetQuestStatus(uint32 quest_id) const;
     void SetQuestStatus(uint32 questId, QuestStatus status, bool update = true);
@@ -1565,6 +1570,9 @@ public:
     static void DeleteOldCharacters();
     static void DeleteOldCharacters(uint32 keepDays);
 
+    static void DeleteOldRecoveryItems();
+    static void DeleteOldRecoveryItems(uint32 keepDays);
+
     bool m_mailsUpdated;
 
     void SetBindPoint(ObjectGuid guid);
@@ -1598,7 +1606,7 @@ public:
     QuestStatusMap& getQuestStatusMap() { return m_QuestStatus; }
     QuestStatusSaveMap& GetQuestStatusSaveMap() { return m_QuestStatusSave; }
 
-    [[nodiscard]] size_t GetRewardedQuestCount() const { return m_RewardedQuests.size(); }
+    [[nodiscard]] std::size_t GetRewardedQuestCount() const { return m_RewardedQuests.size(); }
     [[nodiscard]] bool IsQuestRewarded(uint32 quest_id) const
     {
         return m_RewardedQuests.find(quest_id) != m_RewardedQuests.end();
@@ -1686,6 +1694,7 @@ public:
     void SetFreeTalentPoints(uint32 points);
     bool resetTalents(bool noResetCost = false);
     [[nodiscard]] uint32 resetTalentsCost() const;
+    bool IsMaxLevel() const;
     void InitTalentForLevel();
     void BuildPlayerTalentsInfoData(WorldPacket* data);
     void BuildPetTalentsInfoData(WorldPacket* data);
@@ -1961,7 +1970,7 @@ public:
     [[nodiscard]] WorldSession* GetSession() const { return m_session; }
     void SetSession(WorldSession* sess) { m_session = sess; }
 
-    void BuildCreateUpdateBlockForPlayer(UpdateData* data, Player* target) const override;
+    void BuildCreateUpdateBlockForPlayer(UpdateData* data, Player* target) override;
     void DestroyForPlayer(Player* target, bool onDeath = false) const override;
     void SendLogXPGain(uint32 GivenXP, Unit* victim, uint32 BonusXP, bool recruitAFriend = false, float group_rate = 1.0f);
 
@@ -1986,11 +1995,10 @@ public:
 
     void ProcessTerrainStatusUpdate() override;
 
-    void SendMessageToSet(WorldPacket const* data, bool self) const override { SendMessageToSetInRange(data, GetVisibilityRange(), self, true); } // pussywizard!
-    void SendMessageToSetInRange(WorldPacket const* data, float dist, bool self, bool includeMargin = false, Player const* skipped_rcvr = nullptr) const override; // pussywizard!
-    void SendMessageToSetInRange_OwnTeam(WorldPacket const* data, float dist, bool self) const; // pussywizard! param includeMargin not needed here
-    void SendMessageToSet(WorldPacket const* data, Player const* skipped_rcvr) const override { SendMessageToSetInRange(data, GetVisibilityRange(), skipped_rcvr != this, true, skipped_rcvr); } // pussywizard!
-
+    void SendMessageToSet(WorldPacket const* data, bool self) const override;
+    void SendMessageToSetInRange(WorldPacket const* data, float dist, bool self) const override;
+    void SendMessageToSetInRange(WorldPacket const* data, float dist, bool self, bool includeMargin, bool ownTeamOnly, bool required3dDist = false) const;
+    void SendMessageToSet(WorldPacket const* data, Player const* skipped_rcvr) const override;
     void SendTeleportAckPacket();
 
     [[nodiscard]] Corpse* GetCorpse() const;
@@ -2030,6 +2038,7 @@ public:
 
     void JoinedChannel(Channel* c);
     void LeftChannel(Channel* c);
+    bool IsInChannel(const Channel* c);
     void CleanupChannels();
     void ClearChannelWatch();
     void UpdateLocalChannels(uint32 newZone);
@@ -2133,6 +2142,8 @@ public:
 
     void SetDrunkValue(uint8 newDrunkValue, uint32 itemId = 0);
     [[nodiscard]] uint8 GetDrunkValue() const { return GetByteValue(PLAYER_BYTES_3, 1); }
+    [[nodiscard]] int32 GetFakeDrunkValue() const { return GetInt32Value(PLAYER_FAKE_INEBRIATION); }
+    void UpdateInvisibilityDrunkDetect();
     static DrunkenState GetDrunkenstateByValue(uint8 value);
 
     [[nodiscard]] uint32 GetDeathTimer() const { return m_deathTimer; }
@@ -2333,7 +2344,6 @@ public:
     float m_homebindX;
     float m_homebindY;
     float m_homebindZ;
-    float m_homebindO;
 
     [[nodiscard]] WorldLocation GetStartPosition() const;
 
@@ -2352,7 +2362,7 @@ public:
     bool IsVisibleGloballyFor(Player const* player) const;
 
     void GetInitialVisiblePackets(Unit* target);
-    void UpdateObjectVisibility(bool forced = true) override;
+    void UpdateObjectVisibility(bool forced = true, bool fromUpdate = false) override;
     void UpdateVisibilityForPlayer(bool mapChange = false);
     void UpdateVisibilityOf(WorldObject* target);
     void UpdateTriggerVisibility();
@@ -2592,6 +2602,8 @@ public:
     void UpdatePlayerSetting(std::string source, uint8 index, uint32 value);
 
     void SendSystemMessage(std::string_view msg, bool escapeCharacters = false);
+
+    void ResetSpeakTimers();
 
     std::string GetDebugInfo() const override;
 

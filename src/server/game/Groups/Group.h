@@ -19,6 +19,7 @@
 #define AZEROTHCORE_GROUP_H
 
 #include "DBCEnums.h"
+#include "DataMap.h"
 #include "GroupRefMgr.h"
 #include "LootMgr.h"
 #include "QueryResult.h"
@@ -44,7 +45,7 @@ struct MapEntry;
 #define MAX_RAID_SUBGROUPS MAXRAIDSIZE/MAXGROUPSIZE
 #define TARGETICONCOUNT 8
 
-enum RollVote
+enum RollVote : uint8
 {
     PASS              = 0,
     NEED              = 1,
@@ -242,6 +243,7 @@ public:
     GroupReference* GetFirstMember() { return m_memberMgr.getFirst(); }
     GroupReference const* GetFirstMember() const { return m_memberMgr.getFirst(); }
     uint32 GetMembersCount() const { return m_memberSlots.size(); }
+    uint32 GetInviteeCount() const { return m_invitees.size(); }
 
     uint8 GetMemberGroup(ObjectGuid guid) const;
 
@@ -257,6 +259,8 @@ public:
     void SetTargetIcon(uint8 id, ObjectGuid whoGuid, ObjectGuid targetGuid);
     void SetGroupMemberFlag(ObjectGuid guid, bool apply, GroupMemberFlags flag);
     void RemoveUniqueGroupMemberFlag(GroupMemberFlags flag);
+
+    ObjectGuid const GetTargetIcon(uint8 id) const { return m_targetIcons[id]; }
 
     Difficulty GetDifficulty(bool isRaid) const;
     Difficulty GetDungeonDifficulty() const;
@@ -284,7 +288,7 @@ public:
     bool isRollLootActive() const;
     void SendLootStartRoll(uint32 CountDown, uint32 mapid, const Roll& r);
     void SendLootStartRollToPlayer(uint32 countDown, uint32 mapId, Player* p, bool canNeed, Roll const& r);
-    void SendLootRoll(ObjectGuid SourceGuid, ObjectGuid TargetGuid, uint8 RollNumber, uint8 RollType, const Roll& r);
+    void SendLootRoll(ObjectGuid SourceGuid, ObjectGuid TargetGuid, uint8 RollNumber, uint8 RollType, const Roll& r, bool autoPass = false);
     void SendLootRollWon(ObjectGuid SourceGuid, ObjectGuid TargetGuid, uint8 RollNumber, uint8 RollType, const Roll& r);
     void SendLootAllPassed(Roll const& roll);
     void SendLooter(Creature* creature, Player* pLooter);
@@ -295,6 +299,8 @@ public:
     void CountTheRoll(Rolls::iterator roll, Map* allowedMap);
     bool CountRollVote(ObjectGuid playerGUID, ObjectGuid Guid, uint8 Choise);
     void EndRoll(Loot* loot, Map* allowedMap);
+
+    Rolls GetRolls() const { return RollId; }
 
     // related to disenchant rolls
     void ResetMaxEnchantingLevel();
@@ -317,6 +323,8 @@ public:
     DifficultyPreventionChangeType GetDifficultyChangePreventionReason() const { return _difficultyChangePreventionType; }
     void SetDifficultyChangePrevention(DifficultyPreventionChangeType type);
     void DoForAllMembers(std::function<void(Player*)> const& worker);
+
+    DataMap CustomData;
 
 protected:
     void _homebindIfInstance(Player* player);
