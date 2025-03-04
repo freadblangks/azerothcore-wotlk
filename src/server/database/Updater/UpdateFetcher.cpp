@@ -157,20 +157,16 @@ UpdateFetcher::DirectoryStorage UpdateFetcher::ReceiveIncludedDirectories() cons
         std::vector<std::string> moduleList;
 
         for (auto const& itr : Acore::Tokenize(_modulesList, ',', true))
-        {
             moduleList.emplace_back(itr);
-        }
 
         // data/sql
         for (auto const& itr : moduleList)
         {
-            std::string path = _sourceDirectory->generic_string() + "/modules/" + itr + "/sql/" + _dbModuleName; // modules/mod-name/sql/world
+            std::string path = _sourceDirectory->generic_string() + "/modules/" + itr + "/data/sql/" + _dbModuleName; // modules/mod-name/sql/world
 
             Path const p(path);
             if (!is_directory(p))
-            {
                 continue;
-            }
 
             DirectoryEntry const entry = { p, AppliedFileEntry::StateConvert("MODULE") };
             directories.push_back(entry);
@@ -386,14 +382,14 @@ UpdateResult UpdateFetcher::Update(bool const redundancyChecks,
     // Apply default updates
     for (auto const& availableQuery : available)
     {
-        if (availableQuery.second != CUSTOM && availableQuery.second != MODULE)
+        if (availableQuery.second != PENDING && availableQuery.second != CUSTOM && availableQuery.second != MODULE)
             ApplyUpdateFile(availableQuery);
     }
 
-    // Apply only custom/module updates
+    // Apply only pending/custom/module updates
     for (auto const& availableQuery : available)
     {
-        if (availableQuery.second == CUSTOM || availableQuery.second == MODULE)
+        if (availableQuery.second == PENDING || availableQuery.second == CUSTOM || availableQuery.second == MODULE)
             ApplyUpdateFile(availableQuery);
     }
 
