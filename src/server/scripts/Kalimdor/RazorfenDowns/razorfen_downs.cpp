@@ -115,7 +115,7 @@ public:
 
         void JustDied(Unit* /*killer*/) override
         {
-            me->DespawnOrUnsummon(5000);
+            me->DespawnOrUnsummon(5s);
         }
 
         void sQuestAccept(Player* /*player*/, Quest const* quest) override
@@ -198,7 +198,7 @@ public:
                             std::list<WorldObject*> ClusterList;
                             Acore::AllWorldObjectsInRange objects(me, 50.0f);
                             Acore::WorldObjectListSearcher<Acore::AllWorldObjectsInRange> searcher(me, ClusterList, objects);
-                            Cell::VisitAllObjects(me, searcher, 50.0f);
+                            Cell::VisitObjects(me, searcher, 50.0f);
                             for (std::list<WorldObject*>::const_iterator itr = ClusterList.begin(); itr != ClusterList.end(); ++itr)
                             {
                                 if (Player* player = (*itr)->ToPlayer())
