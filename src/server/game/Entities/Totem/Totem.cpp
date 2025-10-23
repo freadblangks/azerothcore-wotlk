@@ -24,6 +24,11 @@
 #include "SpellMgr.h"
 #include "TotemPackets.h"
 
+//npcbot
+#include "botmgr.h"
+#include "ObjectAccessor.h"
+//end npcbot
+
 Totem::Totem(SummonPropertiesEntry const* properties, ObjectGuid owner) : Minion(properties, owner)
 {
     m_unitTypeMask |= UNIT_MASK_TOTEM;
@@ -34,6 +39,20 @@ Totem::Totem(SummonPropertiesEntry const* properties, ObjectGuid owner) : Minion
 void Totem::Update(uint32 time)
 {
     Unit* owner = GetOwner();
+    //npcbot: do not despawn bot totem if master is dead
+    Creature const* botOwner = (owner && owner->IsPlayer() && owner->ToPlayer()->HaveBot()) ?
+       owner->ToPlayer()->GetBotMgr()->GetBot(GetCreatorGUID()) : nullptr;
+
+    if (botOwner)
+    {
+        if (!botOwner->IsAlive() || !IsAlive() || m_duration <= time)
+        {
+            UnSummon();
+            return;
+        }
+    }
+    else
+    //end npcbot
     if (!owner || !owner->IsAlive() || !IsAlive() || m_duration <= time)
     {
         UnSummon();                                         // remove self
@@ -61,6 +80,9 @@ void Totem::InitStats(uint32 duration)
             owner->ToPlayer()->SendDirectMessage(data.Write());
 
             // set display id depending on caster's race
+            //npcbot: handled in class AI for bot totems
+            if (!(GetCreatorGUID().IsCreature() && owner->ToPlayer()->HaveBot() && owner->ToPlayer()->GetBotMgr()->GetBot(GetCreatorGUID())))
+            //end npcbot
             SetDisplayId(sObjectMgr->GetModelForTotem(SummonSlot(slot), Races(owner->getRace())));
         }
 
@@ -167,6 +189,12 @@ void Totem::UnSummon(Milliseconds msTime)
             }
         }
     }
+
+    //npcbot: send SummonedCreatureDespawn()
+    if (Unit* creator = GetCreator())
+        if (creator->IsNPCBot())
+            creator->ToCreature()->OnBotDespawn(this);
+    //end npcbot
 
     AddObjectToRemoveList();
 }
