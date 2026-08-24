@@ -6,6 +6,8 @@
 /conf/*
 !/conf/dist
 /modules/*
+!/modules/mod-wxl-dbc
+!/modules/mod-wxl-dbc/*
 !/modules/*.md
 !/modules/*.sh
 !/modules/CMakeLists.txt
