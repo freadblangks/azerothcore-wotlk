@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -48,10 +48,13 @@
 #include "SecretMgr.h"
 #include "SharedDefines.h"
 #include "SteadyTimer.h"
+#include "Systemd.h"
+#include "TC9Sidecar.h"
 #include "World.h"
 #include "WorldSessionMgr.h"
 #include "WorldSocket.h"
 #include "WorldSocketMgr.h"
+#include "libsidecar.h"
 #include <boost/asio/signal_set.hpp>
 #include <boost/program_options.hpp>
 #include <csignal>
@@ -127,7 +130,7 @@ int main(int argc, char** argv)
     auto vm = GetConsoleArguments(argc, argv, configFile, configService);
 
     // exit if help or version is enabled
-    if (vm.count("help"))
+    if (vm.count("help") || vm.count("version"))
         return 0;
 
 #if AC_PLATFORM == AC_PLATFORM_WINDOWS
@@ -364,7 +367,8 @@ int main(int argc, char** argv)
         sWorldSocketMgr.StopNetwork();
 
         ///- Clean database before leaving
-        ClearOnlineAccounts();
+        if (!sToCloud9Sidecar->ClusterModeEnabled())
+            ClearOnlineAccounts();
     });
 
     // Set server online (allow connecting now)
@@ -396,17 +400,22 @@ int main(int argc, char** argv)
         cliThread.reset(new std::thread(CliThread), &ShutdownCLIThread);
     }
 
+    sToCloud9Sidecar->Init(worldPort, realm.Id.Realm);
+
     WorldUpdateLoop();
 
     // Shutdown starts here
     threadPool.reset();
+
+    sToCloud9Sidecar->Deinit();
 
     sLog->SetSynchronous();
 
     sScriptMgr->OnShutdown();
 
     // set server offline
-    LoginDatabase.DirectExecute("UPDATE realmlist SET flag = flag | {} WHERE id = '{}'", REALM_FLAG_OFFLINE, realm.Id.Realm);
+    if (!sConfigMgr->GetOption<bool>("Network.UseSocketActivation", false))
+        LoginDatabase.DirectExecute("UPDATE realmlist SET flag = flag | {} WHERE id = '{}'", REALM_FLAG_OFFLINE, realm.Id.Realm);
 
     LOG_INFO("server.worldserver", "Halting process...");
 
@@ -423,7 +432,7 @@ bool StartDB()
     MySQL::Library_Init();
 
     // Load databases
-    DatabaseLoader loader("server.worldserver", DatabaseLoader::DATABASE_NONE, AC_MODULES_LIST);
+    DatabaseLoader loader("server.worldserver", DatabaseLoader::DATABASE_MASK_ALL, AC_MODULES_LIST);
     loader
         .AddDatabase(LoginDatabase, "Login")
         .AddDatabase(CharacterDatabase, "Character")
@@ -438,7 +447,7 @@ bool StartDB()
     }
 
     ///- Get the realm Id from the configuration file
-    realm.Id.Realm = sConfigMgr->GetOption<uint32>("RealmID", 0);
+    realm.Id.Realm = sConfigMgr->GetOption<uint32>("RealmID", 1);
     if (!realm.Id.Realm)
     {
         LOG_ERROR("server.worldserver", "Realm ID not defined in configuration file");
@@ -458,8 +467,11 @@ bool StartDB()
     LOG_INFO("server.loading", "Loading World Information...");
     LOG_INFO("server.loading", "> RealmID:              {}", realm.Id.Realm);
 
-    ///- Clean the database before starting
-    ClearOnlineAccounts();
+    ///- Clean the database before starting.
+    /// Cluster.Enabled is read from config here because sToCloud9Sidecar->Init()
+    /// has not run yet; ClusterModeEnabled() would still be the default false.
+    if (!sConfigMgr->GetOption<bool>("Cluster.Enabled", false))
+        ClearOnlineAccounts();
 
     ///- Insert version info into DB
     WorldDatabasePreparedStatement* stmt = WorldDatabase.GetPreparedStatement(WORLD_UPD_VERSION);
@@ -721,7 +733,8 @@ variables_map GetConsoleArguments(int argc, char** argv, fs::path& configFile, [
         ("help,h", "print usage message")
         ("version,v", "print version build info")
         ("dry-run,d", "Dry run")
-        ("config,c", value<fs::path>(&configFile)->default_value(fs::path(sConfigMgr->GetConfigPath() + std::string(_ACORE_CORE_CONFIG))), "use <arg> as configuration file");
+        ("config,c", value<fs::path>(&configFile)->default_value(fs::path(sConfigMgr->GetConfigPath() + std::string(_ACORE_CORE_CONFIG))), "use <arg> as configuration file")
+        ("config-policy", value<std::string>()->value_name("policy"), "override config severity policy (e.g. default=skip,critical_option=fatal)");
 
 #if AC_PLATFORM == AC_PLATFORM_WINDOWS
     options_description win("Windows platform specific options");
@@ -744,13 +757,11 @@ variables_map GetConsoleArguments(int argc, char** argv, fs::path& configFile, [
     }
 
     if (vm.count("help"))
-    {
         std::cout << all << "\n";
-    }
+    else if (vm.count("version"))
+        std::cout << GitRevision::GetFullVersion() << "\n";
     else if (vm.count("dry-run"))
-    {
         sConfigMgr->setDryRun(true);
-    }
 
     return vm;
 }

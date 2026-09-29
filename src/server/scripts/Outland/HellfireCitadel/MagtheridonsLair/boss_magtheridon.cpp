@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -70,29 +70,16 @@ enum Groups
     GROUP_EARLY_RELEASE_CHECK   = 0
 };
 
-enum Actions
-{
-    ACTION_INCREASE_HELLFIRE_CHANNELER_DEATH_COUNT  = 1,
-    ACTION_BANISH_SELF = 2
-};
-
 struct boss_magtheridon : public BossAI
 {
     boss_magtheridon(Creature* creature) : BossAI(creature, DATA_MAGTHERIDON)
-    {
-        scheduler.SetValidator([this]
-        {
-            return !me->HasUnitState(UNIT_STATE_CASTING);
-        });
-    }
+    {    }
 
     void Reset() override
     {
         BossAI::Reset();
-        _channelersKilled = 0;
         _currentPhase = 0;
         _castingQuake = false;
-        _recentlySpoken = false;
         _magReleased = false;
         _interruptScheduler.CancelAll();
         scheduler.Schedule(90s, [this](TaskContext context)
@@ -135,16 +122,7 @@ struct boss_magtheridon : public BossAI
 
     void KilledUnit(Unit* /*victim*/) override
     {
-        if (!_recentlySpoken)
-        {
-            Talk(SAY_SLAY);
-            _recentlySpoken = true;
-        }
-
-        scheduler.Schedule(5s, [this](TaskContext /*context*/)
-        {
-            _recentlySpoken = false;
-        });
+        Talk(SAY_SLAY);
     }
 
     void JustDied(Unit* killer) override
@@ -199,21 +177,19 @@ struct boss_magtheridon : public BossAI
 
     void DoAction(int32 action) override
     {
-        if (action == ACTION_INCREASE_HELLFIRE_CHANNELER_DEATH_COUNT)
+        if (action == ACTION_RELEASE_MAGTHERIDON)
         {
-            _channelersKilled++;
+            if (_magReleased)
+                return;
 
-            if (_channelersKilled >= 5 && !_magReleased)
+            Talk(SAY_EMOTE_FREE);
+            Talk(SAY_FREE);
+            scheduler.CancelGroup(GROUP_EARLY_RELEASE_CHECK); //cancel regular countdown
+            _magReleased = true;
+            scheduler.Schedule(3s, [this](TaskContext)
             {
-                Talk(SAY_EMOTE_FREE);
-                Talk(SAY_FREE);
-                scheduler.CancelGroup(GROUP_EARLY_RELEASE_CHECK); //cancel regular countdown
-                _magReleased = true;
-                scheduler.Schedule(3s, [this](TaskContext)
-                {
-                    ScheduleCombatEvents();
-                });
-            }
+                ScheduleCombatEvents();
+            });
         }
         else if (action == ACTION_BANISH_SELF)
         {
@@ -226,10 +202,6 @@ struct boss_magtheridon : public BossAI
     {
         BossAI::JustEngagedWith(who);
         Talk(SAY_EMOTE_BEGIN);
-
-        instance->DoForAllMinions(DATA_MAGTHERIDON, [&](Creature* creature) {
-            creature->SetInCombatWithZone();
-        });
 
         scheduler.Schedule(60s, GROUP_EARLY_RELEASE_CHECK, [this](TaskContext /*context*/)
         {
@@ -247,10 +219,11 @@ struct boss_magtheridon : public BossAI
 
     void UpdateAI(uint32 diff) override
     {
+        scheduler.Update(diff);
+
         if (!UpdateVictim())
             return;
 
-        scheduler.Update(diff);
         _interruptScheduler.Update(diff);
 
         if (_currentPhase != 1 && !_castingQuake)
@@ -261,10 +234,8 @@ struct boss_magtheridon : public BossAI
 
 private:
     bool _castingQuake;
-    bool _recentlySpoken;
     bool _magReleased;
     uint8 _currentPhase;
-    uint8 _channelersKilled;
     TaskScheduler _interruptScheduler;
 };
 
@@ -284,7 +255,7 @@ struct npc_target_trigger : public ScriptedAI
             _scheduler.Schedule(5s, [this](TaskContext /*context*/)
             {
                 DoCastSelf(SPELL_DEBRIS_DAMAGE);
-                me->DespawnOrUnsummon(6000);
+                me->DespawnOrUnsummon(6s);
             });
         }
     }

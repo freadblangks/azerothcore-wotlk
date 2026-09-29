@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -16,6 +16,7 @@
  */
 
 #include "AchievementCriteriaScript.h"
+#include "AreaDefines.h"
 #include "CreatureScript.h"
 #include "GridNotifiers.h"
 #include "ObjectMgr.h"
@@ -70,6 +71,7 @@ enum Spells
     SPELL_INCITE_TERROR                     = 73070,
     SPELL_BLOODBOLT_WHIRL                   = 71772,
     SPELL_ANNIHILATE                        = 71322,
+    SPELL_CLEAR_ALL_STATUS_AILMENTS         = 70939,
 };
 
 enum Shadowmourne
@@ -82,9 +84,14 @@ enum Shadowmourne
 
 bool IsVampire(Unit const* unit)
 {
-    if (unit->HasAnyAuras(SPELL_ESSENCE_OF_BLOOD_QUEEN, SPELL_ESSENCE_OF_THE_BLOOD_QUEEN_PLR, SPELL_FRENZIED_BLOODTHIRST))
-        return true;
-    return false;
+    if (!unit)
+        return false;
+
+    return unit->HasAnyAuras(
+        sSpellMgr->GetSpellIdForDifficulty(SPELL_ESSENCE_OF_BLOOD_QUEEN, unit),
+        sSpellMgr->GetSpellIdForDifficulty(SPELL_ESSENCE_OF_THE_BLOOD_QUEEN_PLR, unit),
+        sSpellMgr->GetSpellIdForDifficulty(SPELL_FRENZIED_BLOODTHIRST, unit)
+    );
 }
 
 enum Events
@@ -218,8 +225,11 @@ public:
             me->setActive(true);
             DoZoneInCombat();
             Talk(SAY_AGGRO);
+
             if (instance->GetBossState(DATA_BLOOD_QUEEN_LANA_THEL) != DONE)
                 instance->SetBossState(DATA_BLOOD_QUEEN_LANA_THEL, IN_PROGRESS);
+
+            DoCastSelf(SPELL_CLEAR_ALL_STATUS_AILMENTS, true);
             _creditBloodQuickening = instance->GetData(DATA_BLOOD_QUICKENING_STATE) == IN_PROGRESS;
         }
 
@@ -353,7 +363,7 @@ public:
                     if (me->GetVictim())
                     {
                         std::list<Player*> myList;
-                        const Map::PlayerList& pl = me->GetMap()->GetPlayers();
+                        Map::PlayerList const& pl = me->GetMap()->GetPlayers();
                         for (Map::PlayerList::const_iterator itr = pl.begin(); itr != pl.end(); ++itr)
                             if (Player* p = itr->GetSource())
                                 if (p->IsAlive() && p != me->GetVictim() && !p->IsGameMaster() && !p->HasAura(SPELL_UNCONTROLLABLE_FRENZY))
@@ -423,7 +433,7 @@ public:
                     if (!me->HasReactState(REACT_PASSIVE))
                     {
                         std::list<Player*> myList;
-                        const Map::PlayerList& pl = me->GetMap()->GetPlayers();
+                        Map::PlayerList const& pl = me->GetMap()->GetPlayers();
                         for (Map::PlayerList::const_iterator itr = pl.begin(); itr != pl.end(); ++itr)
                             if (Player* p = itr->GetSource())
                                 if (p->IsAlive() && p != me->GetVictim() && p->GetGUID() != _offtankGUID && !p->IsGameMaster() && p->GetDistance(me) < 100.0f && !p->HasAura(SPELL_UNCONTROLLABLE_FRENZY))
@@ -446,7 +456,7 @@ public:
                     if (!me->HasReactState(REACT_PASSIVE))
                     {
                         std::list<Player*> myList;
-                        const Map::PlayerList& pl = me->GetMap()->GetPlayers();
+                        Map::PlayerList const& pl = me->GetMap()->GetPlayers();
                         for (Map::PlayerList::const_iterator itr = pl.begin(); itr != pl.end(); ++itr)
                             if (Player* p = itr->GetSource())
                                 if (p->IsAlive() && p != me->GetVictim() && p->GetGUID() != _offtankGUID && !p->IsGameMaster() && !p->HasAura(SPELL_PACT_OF_THE_DARKFALLEN) && !p->HasAura(SPELL_UNCONTROLLABLE_FRENZY))
@@ -470,7 +480,7 @@ public:
                     if (!me->HasReactState(REACT_PASSIVE))
                     {
                         std::list<Player*> myList;
-                        const Map::PlayerList& pl = me->GetMap()->GetPlayers();
+                        Map::PlayerList const& pl = me->GetMap()->GetPlayers();
                         for (Map::PlayerList::const_iterator itr = pl.begin(); itr != pl.end(); ++itr)
                             if (Player* p = itr->GetSource())
                                 if (p->IsAlive() && p != me->GetVictim() && p->GetGUID() != _offtankGUID && !p->IsGameMaster() && !p->HasAura(SPELL_PACT_OF_THE_DARKFALLEN) && !p->HasAura(SPELL_UNCONTROLLABLE_FRENZY))
@@ -532,7 +542,7 @@ public:
             return _bloodboltedPlayers.count(guid) != 0;
         }
 
-        void SetGUID(ObjectGuid guid, int32 type = 0) override
+        void SetGUID(ObjectGuid const& guid, int32 type = 0) override
         {
             switch (type)
             {
@@ -549,7 +559,7 @@ public:
 
         void EnterEvadeMode(EvadeReason why) override
         {
-            const Map::PlayerList& pl = me->GetMap()->GetPlayers();
+            Map::PlayerList const& pl = me->GetMap()->GetPlayers();
             for (Map::PlayerList::const_iterator itr = pl.begin(); itr != pl.end(); ++itr)
                 if (Player* p = itr->GetSource())
                     if (p->IsAlive() && p->HasAura(SPELL_UNCONTROLLABLE_FRENZY))
@@ -798,7 +808,7 @@ class spell_blood_queen_vampiric_bite : public SpellScript
 
     SpellCastResult CheckTarget()
     {
-        if (GetExplTargetUnit()->GetMapId() != 631)
+        if (GetExplTargetUnit()->GetMapId() != MAP_ICECROWN_CITADEL)
             return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
         if (IsVampire(GetExplTargetUnit()))
         {
@@ -819,7 +829,7 @@ class spell_blood_queen_vampiric_bite : public SpellScript
             return;
         }
 
-        if (!GetCaster()->IsPlayer() || GetCaster()->GetMapId() != 631)
+        if (!GetCaster()->IsPlayer() || GetCaster()->GetMapId() != MAP_ICECROWN_CITADEL)
             return;
         InstanceScript* instance = GetCaster()->GetInstanceScript();
         if (!instance || instance->GetBossState(DATA_BLOOD_QUEEN_LANA_THEL) != IN_PROGRESS)
@@ -897,7 +907,7 @@ class spell_blood_queen_presence_of_the_darkfallen : public SpellScript
 class achievement_once_bitten_twice_shy : public AchievementCriteriaScript
 {
 public:
-    achievement_once_bitten_twice_shy(const char* name, uint8 spawnMode, bool wasVampire) : AchievementCriteriaScript(name), _spawnMode(spawnMode), _wasVampire(wasVampire) { }
+    achievement_once_bitten_twice_shy(char const* name, uint8 spawnMode, bool wasVampire) : AchievementCriteriaScript(name), _spawnMode(spawnMode), _wasVampire(wasVampire) { }
 
     bool OnCheck(Player* source, Unit* target, uint32 /*criteria_id*/) override
     {

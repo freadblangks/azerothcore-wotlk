@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -120,7 +120,7 @@ std::string RASession::ReadString()
     return line;
 }
 
-bool RASession::CheckAccessLevel(const std::string& user)
+bool RASession::CheckAccessLevel(std::string const& user)
 {
     std::string safeUser = user;
 
@@ -152,7 +152,7 @@ bool RASession::CheckAccessLevel(const std::string& user)
     return true;
 }
 
-bool RASession::CheckPassword(const std::string& user, const std::string& pass)
+bool RASession::CheckPassword(std::string const& user, std::string const& pass)
 {
     std::string safe_user = user;
     std::transform(safe_user.begin(), safe_user.end(), safe_user.begin(), ::toupper);

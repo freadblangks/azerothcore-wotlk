@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -32,57 +32,57 @@
 #include "MapInstanced.h"
 #include "Metric.h"
 #include "MiscPackets.h"
-#include "MMapFactory.h"
 #include "Object.h"
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "Pet.h"
+#include "PoolMgr.h"
 #include "ScriptMgr.h"
+#include "TC9Sidecar.h"
 #include "Transport.h"
 #include "VMapFactory.h"
 #include "Vehicle.h"
 #include "VMapMgr2.h"
 #include "Weather.h"
+#include "WeatherMgr.h"
 
 #define MAP_INVALID_ZONE        0xFFFFFFFF
 
-ZoneDynamicInfo::ZoneDynamicInfo() : MusicId(0), WeatherId(WEATHER_STATE_FINE),
+ZoneDynamicInfo::ZoneDynamicInfo() : MusicId(0), DefaultWeather(nullptr), WeatherId(WEATHER_STATE_FINE),
                                      WeatherGrade(0.0f), OverrideLightId(0), LightFadeInTime(0) { }
 
 Map::~Map()
 {
     // UnloadAll must be called before deleting the map
 
-    sScriptMgr->OnDestroyMap(this);
+    // Kill all scheduled events without executing them, since the map and its objects are being destroyed.
+    // This prevents events from running on invalid or deleted objects during map destruction.
+    Events.KillAllEvents(false);
 
-    while (!i_worldObjects.empty())
-    {
-        WorldObject* obj = *i_worldObjects.begin();
-        ASSERT(obj->IsWorldObject());
-        LOG_DEBUG("maps", "Map::~Map: WorldObject TypeId is not a corpse! ({})", static_cast<uint8>(obj->GetTypeId()));
-        //ASSERT(obj->IsCorpse());
-        obj->RemoveFromWorld();
-        obj->ResetMap();
-    }
+    sScriptMgr->OnDestroyMap(this);
 
     if (!m_scriptSchedule.empty())
         sScriptMgr->DecreaseScheduledScriptCount(m_scriptSchedule.size());
-
-    MMAP::MMapFactory::createOrGetMMapMgr()->unloadMapInstance(GetId(), i_InstanceId);
 }
 
 Map::Map(uint32 id, uint32 InstanceId, uint8 SpawnMode, Map* _parent) :
-    _mapGridManager(this), i_mapEntry(sMapStore.LookupEntry(id)), i_spawnMode(SpawnMode), i_InstanceId(InstanceId),
-    m_unloadTimer(0), m_VisibleDistance(DEFAULT_VISIBILITY_DISTANCE),
-    _instanceResetPeriod(0), m_activeNonPlayersIter(m_activeNonPlayers.end()),
+    _mapGridManager(this), i_mapEntry(sMapStore.LookupEntry(id)), _mapCollisionData(*this, _parent),
+    i_spawnMode(SpawnMode), i_InstanceId(InstanceId), m_unloadTimer(0),
+    m_VisibleDistance(DEFAULT_VISIBILITY_DISTANCE), _instanceResetPeriod(0),
     _transportsUpdateIter(_transports.end()), i_scriptLock(false), _defaultLight(GetDefaultMapLight(id))
 {
     m_parentMap = (_parent ? _parent : this);
 
     _zonePlayerCountMap.clear();
+    _updatableObjectListRecheckTimer.SetInterval(UPDATABLE_OBJECT_LIST_RECHECK_TIMER);
 
     //lets initialize visibility distance for map
     Map::InitVisibilityDistance();
+
+    _weatherUpdateTimer.SetInterval(1 * IN_MILLISECONDS);
+    _corpseUpdateTimer.SetInterval(20 * MINUTE * IN_MILLISECONDS);
+
+    _poolData = sPoolMgr->InitPoolsForMap(this);
 }
 
 // Hook called after map is created AND after added to map list
@@ -102,10 +102,10 @@ void Map::InitVisibilityDistance()
 
     switch (GetId())
     {
-        case 609: // Scarlet Enclave (DK starting zone)
+        case MAP_EBON_HOLD: // Scarlet Enclave (DK starting zone)
             m_VisibleDistance = 125.0f;
             break;
-        case 25: // Scott Test (box map)
+        case MAP_SCOTT_TEST: // (box map)
             m_VisibleDistance = 200.0f;
             break;
     }
@@ -116,20 +116,18 @@ template<class T>
 void Map::AddToGrid(T* obj, Cell const& cell)
 {
     MapGridType* grid = GetMapGrid(cell.GridX(), cell.GridY());
-    if (obj->IsWorldObject())
-        grid->AddWorldObject<T>(cell.CellX(), cell.CellY(), obj);
-    else
-        grid->AddGridObject<T>(cell.CellX(), cell.CellY(), obj);
+    grid->AddGridObject<T>(cell.CellX(), cell.CellY(), obj);
+
+    obj->SetCurrentCell(cell);
 }
 
 template<>
 void Map::AddToGrid(Creature* obj, Cell const& cell)
 {
     MapGridType* grid = GetMapGrid(cell.GridX(), cell.GridY());
-    if (obj->IsWorldObject())
-        grid->AddWorldObject(cell.CellX(), cell.CellY(), obj);
-    else
-        grid->AddGridObject(cell.CellX(), cell.CellY(), obj);
+    grid->AddGridObject(cell.CellX(), cell.CellY(), obj);
+    if (obj->IsFarVisible())
+        grid->AddFarVisibleObject(cell.CellX(), cell.CellY(), obj);
 
     obj->SetCurrentCell(cell);
 }
@@ -139,20 +137,17 @@ void Map::AddToGrid(GameObject* obj, Cell const& cell)
 {
     MapGridType* grid = GetMapGrid(cell.GridX(), cell.GridY());
     grid->AddGridObject(cell.CellX(), cell.CellY(), obj);
+    if (obj->IsFarVisible())
+        grid->AddFarVisibleObject(cell.CellX(), cell.CellY(), obj);
 
     obj->SetCurrentCell(cell);
 }
 
 template<>
-void Map::AddToGrid(DynamicObject* obj, Cell const& cell)
+void Map::AddToGrid(Player* obj, Cell const& cell)
 {
     MapGridType* grid = GetMapGrid(cell.GridX(), cell.GridY());
-    if (obj->IsWorldObject())
-        grid->AddWorldObject(cell.CellX(), cell.CellY(), obj);
-    else
-        grid->AddGridObject(cell.CellX(), cell.CellY(), obj);
-
-    obj->SetCurrentCell(cell);
+    grid->AddGridObject(cell.CellX(), cell.CellY(), obj);
 }
 
 template<>
@@ -166,87 +161,7 @@ void Map::AddToGrid(Corpse* obj, Cell const& cell)
     // so we need to explicitly check it here (Map::AddToGrid is only called from Player::BuildPlayerRepop, not from ObjectGridLoader)
     // to avoid failing an assertion in GridObject::AddToGrid
     if (grid->IsObjectDataLoaded())
-    {
-        if (obj->IsWorldObject())
-            grid->AddWorldObject(cell.CellX(), cell.CellY(), obj);
-        else
-            grid->AddGridObject(cell.CellX(), cell.CellY(), obj);
-    }
-}
-
-template<class T>
-void Map::SwitchGridContainers(T* /*obj*/, bool /*on*/)
-{
-}
-
-template<>
-void Map::SwitchGridContainers(Creature* obj, bool on)
-{
-    ASSERT(!obj->IsPermanentWorldObject());
-    CellCoord p = Acore::ComputeCellCoord(obj->GetPositionX(), obj->GetPositionY());
-    if (!p.IsCoordValid())
-    {
-        LOG_ERROR("maps", "Map::SwitchGridContainers: Object {} has invalid coordinates X:{} Y:{} grid cell [{}:{}]",
-            obj->GetGUID().ToString(), obj->GetPositionX(), obj->GetPositionY(), p.x_coord, p.y_coord);
-        return;
-    }
-
-    Cell cell(p);
-    if (!IsGridLoaded(GridCoord(cell.data.Part.grid_x, cell.data.Part.grid_y)))
-        return;
-
-    LOG_DEBUG("maps", "Switch object {} from grid[{}, {}] {}", obj->GetGUID().ToString(), cell.GridX(), cell.GridY(), on);
-    MapGridType* grid = GetMapGrid(cell.GridX(), cell.GridY());
-    ASSERT(grid);
-
-    obj->RemoveFromGrid(); //This step is not really necessary but we want to do ASSERT in remove/add
-
-    if (on)
-    {
-        grid->AddWorldObject(cell.CellX(), cell.CellY(), obj);
-        AddWorldObject(obj);
-    }
-    else
-    {
         grid->AddGridObject(cell.CellX(), cell.CellY(), obj);
-        RemoveWorldObject(obj);
-    }
-
-    obj->m_isTempWorldObject = on;
-}
-
-template<>
-void Map::SwitchGridContainers(GameObject* obj, bool on)
-{
-    ASSERT(!obj->IsPermanentWorldObject());
-    CellCoord p = Acore::ComputeCellCoord(obj->GetPositionX(), obj->GetPositionY());
-    if (!p.IsCoordValid())
-    {
-        LOG_ERROR("maps", "Map::SwitchGridContainers: Object {} has invalid coordinates X:{} Y:{} grid cell [{}:{}]",
-            obj->GetGUID().ToString(), obj->GetPositionX(), obj->GetPositionY(), p.x_coord, p.y_coord);
-        return;
-    }
-
-    Cell cell(p);
-    if (!IsGridLoaded(GridCoord(cell.data.Part.grid_x, cell.data.Part.grid_y)))
-        return;
-
-    //LOG_DEBUG(LOG_FILTER_MAPS, "Switch object {} from grid[{}, {}] {}", obj->GetGUID().ToString(), cell.data.Part.grid_x, cell.data.Part.grid_y, on);
-    MapGridType* grid = GetMapGrid(cell.GridX(), cell.GridY());
-    ASSERT(grid);
-
-    obj->RemoveFromGrid(); //This step is not really necessary but we want to do ASSERT in remove/add
-
-    if (on)
-    {
-        grid->AddWorldObject(cell.CellX(), cell.CellY(), obj);
-        AddWorldObject(obj);
-    }
-    else
-    {
-        grid->AddGridObject(cell.CellX(), cell.CellY(), obj);
-        RemoveWorldObject(obj);
-    }
 }
 
 template<class T>
@@ -361,9 +276,7 @@ bool Map::AddPlayerToMap(Player* player)
 
     SendInitTransports(player);
     SendInitSelf(player);
-    SendZoneDynamicInfo(player);
 
-    player->m_clientGUIDs.clear();
     player->UpdateObjectVisibility(false);
 
     if (player->IsAlive())
@@ -397,7 +310,7 @@ bool Map::AddToMap(T* obj, bool checkTransport)
     if (obj->IsInWorld())
     {
         ASSERT(obj->IsInGrid());
-        obj->UpdateObjectVisibilityOnCreate();
+        obj->UpdateObjectVisibility(true);
         return true;
     }
 
@@ -432,15 +345,11 @@ bool Map::AddToMap(T* obj, bool checkTransport)
 
     InitializeObject(obj);
 
-    if (obj->isActiveObject())
-        AddToActive(obj);
-
     //something, such as vehicle, needs to be update immediately
     //also, trigger needs to cast spell, if not update, cannot see visual
-    obj->UpdateObjectVisibility(true);
+    obj->UpdateObjectVisibilityOnCreate();
 
-    // Xinef: little hack for vehicles, accessories have to be added after visibility update so they wont fall off the vehicle, moved from Creature::AIM_Initialize
-    // Initialize vehicle, this is done only for summoned npcs, DB creatures are handled by grid loaders
+    // Post-visibility so accessories seat after the vehicle's create packet reaches clients.
     if (obj->IsCreature())
         if (Vehicle* vehicle = obj->ToCreature()->GetVehicleKit())
             vehicle->Reset();
@@ -448,7 +357,7 @@ bool Map::AddToMap(T* obj, bool checkTransport)
 }
 
 template<>
-bool Map::AddToMap(MotionTransport* obj, bool /*checkTransport*/)
+bool Map::AddToMap(Transport* obj, bool /*checkTransport*/)
 {
     //TODO: Needs clean up. An object should not be added to map twice.
     if (obj->IsInWorld())
@@ -463,74 +372,32 @@ bool Map::AddToMap(MotionTransport* obj, bool /*checkTransport*/)
     }
 
     Cell cell(cellCoord);
-    if (obj->isActiveObject())
-        EnsureGridLoaded(cell);
+    EnsureGridLoaded(cell);
 
     obj->AddToWorld();
-
-    if (obj->isActiveObject())
-        AddToActive(obj);
 
     _transports.insert(obj);
 
     // Broadcast creation to players
-    if (!GetPlayers().IsEmpty())
+    // Skip players that are not in world. Sending the create to their loading client
+    // could materialize a lingering transport on whatever map they are teleporting to.
+    // They get the correct transport list from SendInitTransports when added to their new map
+    for (Map::PlayerList::const_iterator itr = GetPlayers().begin(); itr != GetPlayers().end(); ++itr)
     {
-        for (Map::PlayerList::const_iterator itr = GetPlayers().begin(); itr != GetPlayers().end(); ++itr)
+        if (itr->GetSource()->IsInWorld() && itr->GetSource()->GetTransport() != obj)
         {
-            if (itr->GetSource()->GetTransport() != obj)
-            {
-                UpdateData data;
-                obj->BuildCreateUpdateBlockForPlayer(&data, itr->GetSource());
-                WorldPacket packet;
-                data.BuildPacket(packet);
-                itr->GetSource()->SendDirectMessage(&packet);
-            }
+            UpdateData data;
+            obj->BuildCreateUpdateBlockForPlayer(&data, itr->GetSource());
+            WorldPacket packet;
+            data.BuildPacket(packet);
+            itr->GetSource()->SendDirectMessage(&packet);
         }
     }
 
     return true;
 }
 
-void Map::VisitNearbyCellsOfPlayer(Player* player, TypeContainerVisitor<Acore::ObjectUpdater, GridTypeMapContainer>& gridVisitor,
-                                   TypeContainerVisitor<Acore::ObjectUpdater, WorldTypeMapContainer>& worldVisitor,
-                                   TypeContainerVisitor<Acore::ObjectUpdater, GridTypeMapContainer>& largeGridVisitor,
-                                   TypeContainerVisitor<Acore::ObjectUpdater, WorldTypeMapContainer>& largeWorldVisitor)
-{
-    // check for valid position
-    if (!player->IsPositionValid())
-        return;
-
-    // check normal grid activation range of the player
-    VisitNearbyCellsOf(player, gridVisitor, worldVisitor, largeGridVisitor, largeWorldVisitor);
-
-    // check maximum visibility distance for large creatures
-    CellArea area = Cell::CalculateCellArea(player->GetPositionX(), player->GetPositionY(), MAX_VISIBILITY_DISTANCE);
-
-    for (uint32 x = area.low_bound.x_coord; x <= area.high_bound.x_coord; ++x)
-    {
-        for (uint32 y = area.low_bound.y_coord; y <= area.high_bound.y_coord; ++y)
-        {
-            // marked cells are those that have been visited
-            // don't visit the same cell twice
-            uint32 cell_id = (y * TOTAL_NUMBER_OF_CELLS_PER_MAP) + x;
-            if (isCellMarkedLarge(cell_id))
-                continue;
-
-            markCellLarge(cell_id);
-            CellCoord pair(x, y);
-            Cell cell(pair);
-
-            Visit(cell, largeGridVisitor);
-            Visit(cell, largeWorldVisitor);
-        }
-    }
-}
-
-void Map::VisitNearbyCellsOf(WorldObject* obj, TypeContainerVisitor<Acore::ObjectUpdater, GridTypeMapContainer>& gridVisitor,
-                             TypeContainerVisitor<Acore::ObjectUpdater, WorldTypeMapContainer>& worldVisitor,
-                             TypeContainerVisitor<Acore::ObjectUpdater, GridTypeMapContainer>& largeGridVisitor,
-                             TypeContainerVisitor<Acore::ObjectUpdater, WorldTypeMapContainer>& largeWorldVisitor)
+void Map::MarkNearbyCellsOf(WorldObject* obj)
 {
     // Check for valid position
     if (!obj->IsPositionValid())
@@ -538,30 +405,13 @@ void Map::VisitNearbyCellsOf(WorldObject* obj, TypeContainerVisitor<Acore::Objec
 
     // Update mobs/objects in ALL visible cells around object!
     CellArea area = Cell::CalculateCellArea(obj->GetPositionX(), obj->GetPositionY(), obj->GetGridActivationRange());
-
     for (uint32 x = area.low_bound.x_coord; x <= area.high_bound.x_coord; ++x)
     {
         for (uint32 y = area.low_bound.y_coord; y <= area.high_bound.y_coord; ++y)
         {
             // marked cells are those that have been visited
-            // don't visit the same cell twice
             uint32 cell_id = (y * TOTAL_NUMBER_OF_CELLS_PER_MAP) + x;
-            if (isCellMarked(cell_id))
-                continue;
-
             markCell(cell_id);
-            CellCoord pair(x, y);
-            Cell cell(pair);
-
-            Visit(cell, gridVisitor);
-            Visit(cell, worldVisitor);
-
-            if (!isCellMarkedLarge(cell_id))
-            {
-                markCellLarge(cell_id);
-                Visit(cell, largeGridVisitor);
-                Visit(cell, largeWorldVisitor);
-            }
         }
     }
 }
@@ -575,85 +425,60 @@ void Map::UpdatePlayerZoneStats(uint32 oldZone, uint32 newZone)
     if (oldZone != MAP_INVALID_ZONE)
     {
         uint32& oldZoneCount = _zonePlayerCountMap[oldZone];
-        if (!oldZoneCount)
-            LOG_ERROR("maps", "A player left zone {} (went to {}) - but there were no players in the zone!", oldZone, newZone);
-        else
+        if (oldZoneCount)
             --oldZoneCount;
     }
-    ++_zonePlayerCountMap[newZone];
+
+    if (newZone != MAP_INVALID_ZONE)
+        ++_zonePlayerCountMap[newZone];
 }
 
 void Map::Update(const uint32 t_diff, const uint32 s_diff, bool  /*thread*/)
 {
     if (t_diff)
-        _dynamicTree.update(t_diff);
+        _mapCollisionData.GetDynamicTree().update(t_diff);
 
-    /// update worldsessions for existing players
+    // Update world sessions and players
     for (m_mapRefIter = m_mapRefMgr.begin(); m_mapRefIter != m_mapRefMgr.end(); ++m_mapRefIter)
     {
         Player* player = m_mapRefIter->GetSource();
         if (player && player->IsInWorld())
         {
-            //player->Update(t_diff);
+            // Update session
             WorldSession* session = player->GetSession();
             MapSessionFilter updater(session);
             session->Update(s_diff, updater);
+
+            // update players at tick
+            if (!t_diff)
+                player->Update(s_diff);
         }
     }
 
-    _creatureRespawnScheduler.Update(t_diff);
+    Events.Update(t_diff);
 
     if (!t_diff)
     {
-        for (m_mapRefIter = m_mapRefMgr.begin(); m_mapRefIter != m_mapRefMgr.end(); ++m_mapRefIter)
-        {
-            Player* player = m_mapRefIter->GetSource();
-
-            if (!player || !player->IsInWorld())
-                continue;
-
-            // update players at tick
-            player->Update(s_diff);
-        }
-
         HandleDelayedVisibility();
         return;
     }
 
-    /// update active cells around players and active objects
-    resetMarkedCells();
-    resetMarkedCellsLarge();
-
-    Acore::ObjectUpdater updater(t_diff, false);
-
-    // for creature
-    TypeContainerVisitor<Acore::ObjectUpdater, GridTypeMapContainer  > grid_object_update(updater);
-    // for pets
-    TypeContainerVisitor<Acore::ObjectUpdater, WorldTypeMapContainer > world_object_update(updater);
-
-    // for large creatures
-    Acore::ObjectUpdater largeObjectUpdater(t_diff, true);
-    TypeContainerVisitor<Acore::ObjectUpdater, GridTypeMapContainer  > grid_large_object_update(largeObjectUpdater);
-    TypeContainerVisitor<Acore::ObjectUpdater, WorldTypeMapContainer  > world_large_object_update(largeObjectUpdater);
-
-    // pussywizard: container for far creatures in combat with players
-    std::vector<Creature*> updateList;
-    updateList.reserve(10);
-
-    // non-player active objects, increasing iterator in the loop in case of object removal
-    for (m_activeNonPlayersIter = m_activeNonPlayers.begin(); m_activeNonPlayersIter != m_activeNonPlayers.end();)
+    /// Process any due respawns (non-compatibility mode spawns)
+    if (!sWorld->getBoolConfig(CONFIG_RESPAWN_FORCE_COMPATIBILITY_MODE))
     {
-        WorldObject* obj = *m_activeNonPlayersIter;
-        ++m_activeNonPlayersIter;
-
-        if (!obj || !obj->IsInWorld())
-            continue;
-
-        VisitNearbyCellsOf(obj, grid_object_update, world_object_update, grid_large_object_update, world_large_object_update);
+        if (_respawnCheckTimer <= t_diff)
+        {
+            ProcessRespawns();
+            _respawnCheckTimer = 5000; // Check every 5 seconds
+        }
+        else
+            _respawnCheckTimer -= t_diff;
     }
 
-    // the player iterator is stored in the map object
-    // to make sure calls to Map::Remove don't invalidate it
+    _updatableObjectListRecheckTimer.Update(t_diff);
+    resetMarkedCells();
+
+    // Update players
     for (m_mapRefIter = m_mapRefMgr.begin(); m_mapRefIter != m_mapRefMgr.end(); ++m_mapRefIter)
     {
         Player* player = m_mapRefIter->GetSource();
@@ -661,54 +486,24 @@ void Map::Update(const uint32 t_diff, const uint32 s_diff, bool  /*thread*/)
         if (!player || !player->IsInWorld())
             continue;
 
-        // update players at tick
         player->Update(s_diff);
 
-        VisitNearbyCellsOfPlayer(player, grid_object_update, world_object_update, grid_large_object_update, world_large_object_update);
-
-        // If player is using far sight, visit that object too
-        if (WorldObject* viewPoint = player->GetViewpoint())
+        if (_updatableObjectListRecheckTimer.Passed())
         {
-            if (Creature* viewCreature = viewPoint->ToCreature())
-            {
-                VisitNearbyCellsOf(viewCreature, grid_object_update, world_object_update, grid_large_object_update, world_large_object_update);
-            }
-            else if (DynamicObject* viewObject = viewPoint->ToDynObject())
-            {
-                VisitNearbyCellsOf(viewObject, grid_object_update, world_object_update, grid_large_object_update, world_large_object_update);
-            }
-        }
+            MarkNearbyCellsOf(player);
 
-        // handle updates for creatures in combat with player and are more than X yards away
-        if (player->IsInCombat())
-        {
-            updateList.clear();
-            float rangeSq = player->GetGridActivationRange() - 1.0f;
-            rangeSq = rangeSq * rangeSq;
-            HostileReference* ref = player->getHostileRefMgr().getFirst();
-            while (ref)
+            // If player is using far sight, update viewpoint
+            if (WorldObject* viewPoint = player->GetViewpoint())
             {
-                if (Unit* unit = ref->GetSource()->GetOwner())
-                    if (Creature* cre = unit->ToCreature())
-                        if (cre->FindMap() == player->FindMap() && cre->GetExactDist2dSq(player) > rangeSq)
-                            updateList.push_back(cre);
-                ref = ref->next();
+                if (Creature* viewCreature = viewPoint->ToCreature())
+                    MarkNearbyCellsOf(viewCreature);
+                else if (DynamicObject* viewObject = viewPoint->ToDynObject())
+                    MarkNearbyCellsOf(viewObject);
             }
-            for (std::vector<Creature*>::const_iterator itr = updateList.begin(); itr != updateList.end(); ++itr)
-                VisitNearbyCellsOf(*itr, grid_object_update, world_object_update, grid_large_object_update, world_large_object_update);
         }
     }
 
-    for (_transportsUpdateIter = _transports.begin(); _transportsUpdateIter != _transports.end();) // pussywizard: transports updated after VisitNearbyCellsOf, grids around are loaded, everything ok
-    {
-        MotionTransport* transport = *_transportsUpdateIter;
-        ++_transportsUpdateIter;
-
-        if (!transport->IsInWorld())
-            continue;
-
-        transport->Update(t_diff);
-    }
+    UpdateNonPlayerObjects(t_diff);
 
     SendObjectUpdates();
 
@@ -726,6 +521,11 @@ void Map::Update(const uint32 t_diff, const uint32 s_diff, bool  /*thread*/)
 
     HandleDelayedVisibility();
 
+    UpdatePlayersRedirectKickEvent(t_diff);
+
+    UpdateWeather(t_diff);
+    UpdateExpiredCorpses(t_diff);
+
     sScriptMgr->OnMapUpdate(this, t_diff);
 
     METRIC_VALUE("map_creatures", uint64(GetObjectsStore().Size<Creature>()),
@@ -735,6 +535,164 @@ void Map::Update(const uint32 t_diff, const uint32 s_diff, bool  /*thread*/)
     METRIC_VALUE("map_gameobjects", uint64(GetObjectsStore().Size<GameObject>()),
         METRIC_TAG("map_id", std::to_string(GetId())),
         METRIC_TAG("map_instanceid", std::to_string(GetInstanceId())));
+}
+
+void Map::UpdateNonPlayerObjects(uint32 const diff)
+{
+    for (WorldObject* obj : _pendingAddUpdatableObjectList)
+        _AddObjectToUpdateList(obj);
+    _pendingAddUpdatableObjectList.clear();
+
+    if (_updatableObjectListRecheckTimer.Passed())
+    {
+        for (uint32 i = 0; i < _updatableObjectList.size();)
+        {
+            WorldObject* obj = _updatableObjectList[i];
+            if (!obj->IsInWorld())
+            {
+                ++i;
+                continue;
+            }
+
+            obj->Update(diff);
+
+            if (!obj->IsUpdateNeeded())
+            {
+                _RemoveObjectFromUpdateList(obj);
+                // Intentional no iteration here, obj is swapped with last element in
+                // _updatableObjectList so next loop will update that object at the same index
+            }
+            else
+                ++i;
+        }
+        _updatableObjectListRecheckTimer.Reset();
+    }
+    else
+    {
+        for (uint32 i = 0; i < _updatableObjectList.size(); ++i)
+        {
+            WorldObject* obj = _updatableObjectList[i];
+            if (!obj->IsInWorld())
+                continue;
+
+            obj->Update(diff);
+        }
+    }
+}
+
+void Map::AddObjectToPendingUpdateList(WorldObject* obj)
+{
+    if (!obj->CanBeAddedToMapUpdateList())
+        return;
+
+    UpdatableMapObject* mapUpdatableObject = dynamic_cast<UpdatableMapObject*>(obj);
+    if (!mapUpdatableObject || mapUpdatableObject->GetUpdateState() != UpdatableMapObject::UpdateState::NotUpdating)
+        return;
+
+    _pendingAddUpdatableObjectList.insert(obj);
+    mapUpdatableObject->SetUpdateState(UpdatableMapObject::UpdateState::PendingAdd);
+}
+
+// Internal use only
+void Map::_AddObjectToUpdateList(WorldObject* obj)
+{
+    UpdatableMapObject* mapUpdatableObject = dynamic_cast<UpdatableMapObject*>(obj);
+    ASSERT(mapUpdatableObject && mapUpdatableObject->GetUpdateState() == UpdatableMapObject::UpdateState::PendingAdd);
+
+    mapUpdatableObject->SetUpdateState(UpdatableMapObject::UpdateState::Updating);
+    mapUpdatableObject->SetMapUpdateListOffset(_updatableObjectList.size());
+    _updatableObjectList.push_back(obj);
+}
+
+// Internal use only
+void Map::_RemoveObjectFromUpdateList(WorldObject* obj)
+{
+    UpdatableMapObject* mapUpdatableObject = dynamic_cast<UpdatableMapObject*>(obj);
+    ASSERT(mapUpdatableObject && mapUpdatableObject->GetUpdateState() == UpdatableMapObject::UpdateState::Updating);
+
+    if (obj != _updatableObjectList.back())
+    {
+        dynamic_cast<UpdatableMapObject*>(_updatableObjectList.back())->SetMapUpdateListOffset(mapUpdatableObject->GetMapUpdateListOffset());
+        std::swap(_updatableObjectList[mapUpdatableObject->GetMapUpdateListOffset()], _updatableObjectList.back());
+    }
+
+    _updatableObjectList.pop_back();
+    mapUpdatableObject->SetUpdateState(UpdatableMapObject::UpdateState::NotUpdating);
+}
+
+void Map::RemoveObjectFromMapUpdateList(WorldObject* obj)
+{
+    if (!obj->CanBeAddedToMapUpdateList())
+        return;
+
+    UpdatableMapObject* mapUpdatableObject = dynamic_cast<UpdatableMapObject*>(obj);
+    if (mapUpdatableObject->GetUpdateState() == UpdatableMapObject::UpdateState::PendingAdd)
+        _pendingAddUpdatableObjectList.erase(obj);
+    else if (mapUpdatableObject->GetUpdateState() == UpdatableMapObject::UpdateState::Updating)
+        _RemoveObjectFromUpdateList(obj);
+}
+
+// Used in VisibilityDistanceType::Large and VisibilityDistanceType::Gigantic
+void Map::AddWorldObjectToFarVisibleMap(WorldObject* obj)
+{
+    if (Creature* creature = obj->ToCreature())
+    {
+        if (!creature->IsInGrid())
+            return;
+
+        Cell curr_cell = creature->GetCurrentCell();
+        MapGridType* grid = GetMapGrid(curr_cell.GridX(), curr_cell.GridY());
+        grid->AddFarVisibleObject(curr_cell.CellX(), curr_cell.CellY(), creature);
+    }
+    else if (GameObject* go = obj->ToGameObject())
+    {
+        if (!go->IsInGrid())
+            return;
+
+        Cell curr_cell = go->GetCurrentCell();
+        MapGridType* grid = GetMapGrid(curr_cell.GridX(), curr_cell.GridY());
+        grid->AddFarVisibleObject(curr_cell.CellX(), curr_cell.CellY(), go);
+    }
+}
+
+void Map::RemoveWorldObjectFromFarVisibleMap(WorldObject* obj)
+{
+    if (Creature* creature = obj->ToCreature())
+    {
+        Cell curr_cell = creature->GetCurrentCell();
+        MapGridType* grid = GetMapGrid(curr_cell.GridX(), curr_cell.GridY());
+        grid->RemoveFarVisibleObject(curr_cell.CellX(), curr_cell.CellY(), creature);
+    }
+    else if (GameObject* go = obj->ToGameObject())
+    {
+        Cell curr_cell = go->GetCurrentCell();
+        MapGridType* grid = GetMapGrid(curr_cell.GridX(), curr_cell.GridY());
+        grid->RemoveFarVisibleObject(curr_cell.CellX(), curr_cell.CellY(), go);
+    }
+}
+
+// Used in VisibilityDistanceType::Infinite
+void Map::AddWorldObjectToZoneWideVisibleMap(uint32 zoneId, WorldObject* obj)
+{
+    _zoneWideVisibleWorldObjectsMap[zoneId].insert(obj);
+}
+
+void Map::RemoveWorldObjectFromZoneWideVisibleMap(uint32 zoneId, WorldObject* obj)
+{
+    ZoneWideVisibleWorldObjectsMap::iterator itr = _zoneWideVisibleWorldObjectsMap.find(zoneId);
+    if (itr == _zoneWideVisibleWorldObjectsMap.end())
+        return;
+
+    itr->second.erase(obj);
+}
+
+ZoneWideVisibleWorldObjectsSet const* Map::GetZoneWideVisibleWorldObjectsForZone(uint32 zoneId) const
+{
+    ZoneWideVisibleWorldObjectsMap::const_iterator itr = _zoneWideVisibleWorldObjectsMap.find(zoneId);
+    if (itr == _zoneWideVisibleWorldObjectsMap.end())
+        return nullptr;
+
+    return &itr->second;
 }
 
 void Map::HandleDelayedVisibility()
@@ -760,16 +718,12 @@ struct ResetNotifier
 
 void Map::RemovePlayerFromMap(Player* player, bool remove)
 {
-    // Before leaving map, update zone/area for stats
-    player->UpdateZone(MAP_INVALID_ZONE, 0);
-    player->getHostileRefMgr().deleteReferences(true); // pussywizard: multithreading crashfix
+    UpdatePlayerZoneStats(player->GetZoneId(), MAP_INVALID_ZONE);
 
-    bool inWorld = player->IsInWorld();
+    player->GetThreatMgr().RemoveMeFromThreatLists(); // pussywizard: multithreading crashfix
+
     player->RemoveFromWorld();
     SendRemoveTransports(player);
-
-    if (!inWorld) // pussywizard: if was in world, RemoveFromWorld() called DestroyForNearbyPlayers()
-        player->DestroyForNearbyPlayers(); // pussywizard: previous player->UpdateObjectVisibility(true)
 
     if (player->IsInGrid())
         player->RemoveFromGrid();
@@ -790,29 +744,23 @@ void Map::AfterPlayerUnlinkFromMap()
 template<class T>
 void Map::RemoveFromMap(T* obj, bool remove)
 {
-    bool inWorld = obj->IsInWorld() && obj->GetTypeId() >= TYPEID_UNIT && obj->GetTypeId() <= TYPEID_GAMEOBJECT;
     obj->RemoveFromWorld();
-
-    if (obj->isActiveObject())
-        RemoveFromActive(obj);
-
-    if (!inWorld) // pussywizard: if was in world, RemoveFromWorld() called DestroyForNearbyPlayers()
-        obj->DestroyForNearbyPlayers(); // pussywizard: previous player->UpdateObjectVisibility()
 
     obj->RemoveFromGrid();
 
     obj->ResetMap();
 
     if (remove)
+    {
+        RemoveObjectFromMapUpdateList(obj);
         DeleteFromWorld(obj);
+    }
 }
 
 template<>
-void Map::RemoveFromMap(MotionTransport* obj, bool remove)
+void Map::RemoveFromMap(Transport* obj, bool remove)
 {
     obj->RemoveFromWorld();
-    if (obj->isActiveObject())
-        RemoveFromActive(obj);
 
     Map::PlayerList const& players = GetPlayers();
     if (!players.IsEmpty())
@@ -821,8 +769,10 @@ void Map::RemoveFromMap(MotionTransport* obj, bool remove)
         obj->BuildOutOfRangeUpdateBlock(&data);
         WorldPacket packet;
         data.BuildPacket(packet);
+        // Skip players that are not in world
+        // Their client already received the destroy from SendRemoveTransports when leaving this map
         for (Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
-            if (itr->GetSource()->GetTransport() != obj)
+            if (itr->GetSource()->IsInWorld() && itr->GetSource()->GetTransport() != obj)
                 itr->GetSource()->SendDirectMessage(&packet);
     }
 
@@ -839,6 +789,8 @@ void Map::RemoveFromMap(MotionTransport* obj, bool remove)
         _transports.erase(obj);
 
     obj->ResetMap();
+
+    RemoveObjectFromMapUpdateList(obj);
 
     if (remove)
     {
@@ -993,6 +945,11 @@ void Map::MoveAllCreaturesInMoveList()
 
         Cell const& old_cell = c->GetCurrentCell();
         Cell new_cell(c->GetPositionX(), c->GetPositionY());
+        if (c->IsFarVisible())
+        {
+            // Removes via GetCurrentCell, added back in AddToGrid
+            RemoveWorldObjectFromFarVisibleMap(c);
+        }
 
         c->RemoveFromGrid();
         if (old_cell.DiffGrid(new_cell))
@@ -1022,6 +979,12 @@ void Map::MoveAllGameObjectsInMoveList()
 
         Cell const& old_cell = go->GetCurrentCell();
         Cell new_cell(go->GetPositionX(), go->GetPositionY());
+
+        if (go->IsFarVisible())
+        {
+            // Removes via GetCurrentCell, added back in AddToGrid
+            RemoveWorldObjectFromFarVisibleMap(go);
+        }
 
         go->RemoveFromGrid();
         if (old_cell.DiffGrid(new_cell))
@@ -1094,9 +1057,10 @@ void Map::UnloadAll()
 
     for (GridRefMgr<MapGridType>::iterator i = GridRefMgr<MapGridType>::begin(); i != GridRefMgr<MapGridType>::end();)
     {
-        MapGridType& grid(*i->GetSource());
+        MapGridType* grid = i->GetSource();
         ++i;
-        UnloadGrid(grid); // deletes the grid and removes it from the GridRefMgr
+        if (grid)
+            UnloadGrid(*grid);
     }
 
     // pussywizard: crashfix, some npc can be left on transport (not a default passenger)
@@ -1105,16 +1069,15 @@ void Map::UnloadAll()
 
     for (TransportsContainer::iterator itr = _transports.begin(); itr != _transports.end();)
     {
-        MotionTransport* transport = *itr;
+        Transport* transport = *itr;
         ++itr;
 
-        transport->RemoveFromWorld();
-        delete transport;
+        RemoveFromMap<Transport>(transport, true);
     }
 
     _transports.clear();
 
-    for (auto& cellCorpsePair : _corpsesByCell)
+    for (auto& cellCorpsePair : _corpsesByGrid)
     {
         for (Corpse* corpse : cellCorpsePair.second)
         {
@@ -1124,16 +1087,16 @@ void Map::UnloadAll()
         }
     }
 
-    _corpsesByCell.clear();
+    _corpsesByGrid.clear();
     _corpsesByPlayer.clear();
     _corpseBones.clear();
 }
 
 std::shared_ptr<GridTerrainData> Map::GetGridTerrainDataSharedPtr(GridCoord const& gridCoord)
 {
-    // ensure GridMap is created
-    EnsureGridCreated(gridCoord);
-    return _mapGridManager.GetGrid(gridCoord.x_coord, gridCoord.y_coord)->GetTerrainDataSharedPtr();
+    MapGridType* grid = _mapGridManager.GetGrid(gridCoord.x_coord, gridCoord.y_coord);
+    ASSERT(grid); // Grid should always exist during this call
+    return grid->GetTerrainDataSharedPtr();
 }
 
 GridTerrainData* Map::GetGridTerrainData(GridCoord const& gridCoord)
@@ -1159,7 +1122,7 @@ float Map::GetWaterOrGroundLevel(uint32 phasemask, float x, float y, float z, fl
     if (ground)
         *ground = ground_z;
 
-    LiquidData const& liquidData = const_cast<Map*>(this)->GetLiquidData(phasemask, x, y, ground_z, collisionHeight, MAP_ALL_LIQUIDS);
+    LiquidData const& liquidData = const_cast<Map*>(this)->GetLiquidData(phasemask, x, y, ground_z, collisionHeight, {});
     switch (liquidData.Status)
     {
         case LIQUID_MAP_ABOVE_WATER:
@@ -1210,10 +1173,7 @@ float Map::GetHeight(float x, float y, float z, bool checkVMap /*= true*/, float
 
     float vmapHeight = VMAP_INVALID_HEIGHT_VALUE;
     if (checkVMap)
-    {
-        VMAP::IVMapMgr* vmgr = VMAP::VMapFactory::createOrGetVMapMgr();
-        vmapHeight = vmgr->getHeight(GetId(), x, y, z, maxSearchDist);   // look from a bit higher pos to find the floor
-    }
+        vmapHeight = _mapCollisionData.GetStaticTree().getHeight(x, y, z, maxSearchDist); // look from a bit higher pos to find the floor
 
     // mapHeight set for any above raw ground Z or <= INVALID_HEIGHT
     // vmapheight set for any under Z value or <= INVALID_HEIGHT
@@ -1260,27 +1220,17 @@ static inline bool IsInWMOInterior(uint32 mogpFlags)
 
 bool Map::GetAreaInfo(uint32 phaseMask, float x, float y, float z, uint32& flags, int32& adtId, int32& rootId, int32& groupId) const
 {
-    float vmap_z = z;
-    float dynamic_z = z;
     float check_z = z;
-    VMAP::IVMapMgr* vmgr = VMAP::VMapFactory::createOrGetVMapMgr();
-    uint32 vflags;
-    int32 vadtId;
-    int32 vrootId;
-    int32 vgroupId;
-    uint32 dflags;
-    int32 dadtId;
-    int32 drootId;
-    int32 dgroupId;
+    VMAP::AreaAndLiquidData vdata;
+    VMAP::AreaAndLiquidData ddata;
 
-    bool hasVmapAreaInfo = vmgr->GetAreaInfo(GetId(), x, y, vmap_z, vflags, vadtId, vrootId, vgroupId);
-    bool hasDynamicAreaInfo = _dynamicTree.GetAreaInfo(x, y, dynamic_z, phaseMask, dflags, dadtId, drootId, dgroupId);
-    auto useVmap = [&]() { check_z = vmap_z; flags = vflags; adtId = vadtId; rootId = vrootId; groupId = vgroupId; };
-    auto useDyn = [&]() { check_z = dynamic_z; flags = dflags; adtId = dadtId; rootId = drootId; groupId = dgroupId; };
-
+    bool hasVmapAreaInfo = _mapCollisionData.GetStaticTree().GetAreaAndLiquidData(x, y, z, {}, vdata) && vdata.areaInfo.has_value();
+    bool hasDynamicAreaInfo = _mapCollisionData.GetDynamicTree().GetAreaAndLiquidData(x, y, z, phaseMask, {}, ddata) && ddata.areaInfo.has_value();
+    auto useVmap = [&] { check_z = vdata.floorZ; groupId = vdata.areaInfo->groupId; adtId = vdata.areaInfo->adtId; rootId = vdata.areaInfo->rootId; flags = vdata.areaInfo->mogpFlags; };
+    auto useDyn = [&] { check_z = ddata.floorZ; groupId = ddata.areaInfo->groupId; adtId = ddata.areaInfo->adtId; rootId = ddata.areaInfo->rootId; flags = ddata.areaInfo->mogpFlags; };
     if (hasVmapAreaInfo)
     {
-        if (hasDynamicAreaInfo && dynamic_z > vmap_z)
+        if (hasDynamicAreaInfo && ddata.floorZ > vdata.floorZ)
             useDyn();
         else
             useVmap();
@@ -1361,32 +1311,29 @@ void Map::GetZoneAndAreaId(uint32 phaseMask, uint32& zoneid, uint32& areaid, flo
             zoneid = area->zone;
 }
 
-LiquidData const Map::GetLiquidData(uint32 phaseMask, float x, float y, float z, float collisionHeight, uint8 ReqLiquidType)
+LiquidData const Map::GetLiquidData(uint32 phaseMask, float x, float y, float z, float collisionHeight, Optional<uint8> ReqLiquidType)
 {
    LiquidData liquidData;
+   liquidData.Status = LIQUID_MAP_NO_WATER;
 
-    VMAP::IVMapMgr* vmgr = VMAP::VMapFactory::createOrGetVMapMgr();
-    float liquid_level = INVALID_HEIGHT;
-    float ground_level = INVALID_HEIGHT;
-    uint32 liquid_type = 0;
-    uint32 mogpFlags = 0;
+    VMAP::AreaAndLiquidData vmapData;
     bool useGridLiquid = true;
-    if (vmgr->GetLiquidLevel(GetId(), x, y, z, ReqLiquidType, liquid_level, ground_level, liquid_type, mogpFlags))
+    if (_mapCollisionData.GetStaticTree().GetAreaAndLiquidData(x, y, z, ReqLiquidType, vmapData) && vmapData.liquidInfo)
     {
-        useGridLiquid = !IsInWMOInterior(mogpFlags);
-        LOG_DEBUG("maps", "GetLiquidStatus(): vmap liquid level: {} ground: {} type: {}", liquid_level, ground_level, liquid_type);
+        useGridLiquid = !vmapData.areaInfo || !IsInWMOInterior(vmapData.areaInfo->mogpFlags);
+        LOG_DEBUG("maps", "GetLiquidStatus(): vmap liquid level: {} ground: {} type: {}", vmapData.liquidInfo->level, vmapData.floorZ, vmapData.liquidInfo->type);
         // Check water level and ground level
-        if (liquid_level > ground_level && G3D::fuzzyGe(z, ground_level - GROUND_HEIGHT_TOLERANCE))
+        if (vmapData.liquidInfo->level > vmapData.floorZ && G3D::fuzzyGe(z, vmapData.floorZ - GROUND_HEIGHT_TOLERANCE))
         {
             // hardcoded in client like this
-            if (GetId() == 530 && liquid_type == 2)
-                liquid_type = 15;
+            if (GetId() == MAP_OUTLAND && vmapData.liquidInfo->type == 2)
+                vmapData.liquidInfo->type = 15;
 
             uint32 liquidFlagType = 0;
-            if (LiquidTypeEntry const* liq = sLiquidTypeStore.LookupEntry(liquid_type))
+            if (LiquidTypeEntry const* liq = sLiquidTypeStore.LookupEntry(vmapData.liquidInfo->type))
                 liquidFlagType = liq->Type;
 
-            if (liquid_type && liquid_type < 21)
+            if (vmapData.liquidInfo->type && vmapData.liquidInfo->type < 21)
             {
                 if (AreaTableEntry const* area = sAreaTableStore.LookupEntry(GetAreaId(phaseMask, x, y, z)))
                 {
@@ -1400,19 +1347,19 @@ LiquidData const Map::GetLiquidData(uint32 phaseMask, float x, float y, float z,
 
                     if (LiquidTypeEntry const* liq = sLiquidTypeStore.LookupEntry(overrideLiquid))
                     {
-                        liquid_type = overrideLiquid;
+                        vmapData.liquidInfo->type = overrideLiquid;
                         liquidFlagType = liq->Type;
                     }
                 }
             }
 
-            liquidData.Level = liquid_level;
-            liquidData.DepthLevel = ground_level;
-            liquidData.Entry = liquid_type;
+            liquidData.Level = vmapData.liquidInfo->level;
+            liquidData.DepthLevel = vmapData.floorZ;
+            liquidData.Entry = vmapData.liquidInfo->type;
             liquidData.Flags = 1 << liquidFlagType;
         }
 
-        float delta = liquid_level - z;
+        float delta = vmapData.liquidInfo->level - z;
 
         // Get position delta
         if (delta > collisionHeight)
@@ -1431,11 +1378,11 @@ LiquidData const Map::GetLiquidData(uint32 phaseMask, float x, float y, float z,
         {
             LiquidData const& map_data = gmap->GetLiquidData(x, y, z, collisionHeight, ReqLiquidType);
             // Not override LIQUID_MAP_ABOVE_WATER with LIQUID_MAP_NO_WATER:
-            if (map_data.Status != LIQUID_MAP_NO_WATER && (map_data.Level > ground_level))
+            if (map_data.Status != LIQUID_MAP_NO_WATER && (map_data.Level > vmapData.floorZ))
             {
                 // hardcoded in client like this
                 uint32 liquidEntry = map_data.Entry;
-                if (GetId() == 530 && liquidEntry == 2)
+                if (GetId() == MAP_OUTLAND && liquidEntry == 2)
                     liquidEntry = 15;
 
                 liquidData = map_data;
@@ -1447,16 +1394,15 @@ LiquidData const Map::GetLiquidData(uint32 phaseMask, float x, float y, float z,
    return liquidData;
 }
 
-void Map::GetFullTerrainStatusForPosition(uint32 /*phaseMask*/, float x, float y, float z, float collisionHeight, PositionFullTerrainStatus& data, uint8 reqLiquidType)
+void Map::GetFullTerrainStatusForPosition(uint32 phaseMask, float x, float y, float z, float collisionHeight, PositionFullTerrainStatus& data, Optional<uint8> reqLiquidType)
 {
     GridTerrainData* gmap = GetGridTerrainData(x, y);
 
-    VMAP::IVMapMgr* vmgr = VMAP::VMapFactory::createOrGetVMapMgr();
     VMAP::AreaAndLiquidData vmapData;
-    // VMAP::AreaAndLiquidData dynData;
+    VMAP::AreaAndLiquidData dynData;
     VMAP::AreaAndLiquidData* wmoData = nullptr;
-    vmgr->GetAreaAndLiquidData(GetId(), x, y, z, reqLiquidType, vmapData);
-    // _dynamicTree.GetAreaAndLiquidData(x, y, z, phaseMask, reqLiquidType, dynData);
+    _mapCollisionData.GetStaticTree().GetAreaAndLiquidData(x, y, z, reqLiquidType, vmapData);
+    _mapCollisionData.GetDynamicTree().GetAreaAndLiquidData(x, y, z, phaseMask, reqLiquidType, dynData);
 
     uint32 gridAreaId = 0;
     float gridMapHeight = INVALID_HEIGHT;
@@ -1483,7 +1429,6 @@ void Map::GetFullTerrainStatusForPosition(uint32 /*phaseMask*/, float x, float y
     // NOTE: Objects will not detect a case when a wmo providing area/liquid despawns from under them
     // but this is fine as these kind of objects are not meant to be spawned and despawned a lot
     // example: Lich King platform
-    /*
     if (dynData.floorZ > VMAP_INVALID_HEIGHT && G3D::fuzzyGe(z, dynData.floorZ - GROUND_HEIGHT_TOLERANCE) &&
         (G3D::fuzzyLt(z, gridMapHeight - GROUND_HEIGHT_TOLERANCE) || dynData.floorZ > gridMapHeight) &&
         (G3D::fuzzyLt(z, vmapData.floorZ - GROUND_HEIGHT_TOLERANCE) || dynData.floorZ > vmapData.floorZ))
@@ -1491,7 +1436,6 @@ void Map::GetFullTerrainStatusForPosition(uint32 /*phaseMask*/, float x, float y
         data.floorZ = dynData.floorZ;
         wmoData = &dynData;
     }
-    */
 
     if (wmoData)
     {
@@ -1532,7 +1476,7 @@ void Map::GetFullTerrainStatusForPosition(uint32 /*phaseMask*/, float x, float y
     if (wmoData && wmoData->liquidInfo && wmoData->liquidInfo->level > wmoData->floorZ)
     {
         uint32 liquidType = wmoData->liquidInfo->type;
-        if (GetId() == 530 && liquidType == 2) // gotta love blizzard hacks
+        if (GetId() == MAP_OUTLAND && liquidType == 2) // gotta love blizzard hacks
             liquidType = 15;
 
         uint32 liquidFlagType = 0;
@@ -1581,7 +1525,7 @@ void Map::GetFullTerrainStatusForPosition(uint32 /*phaseMask*/, float x, float y
         if (gridLiquidData.Status != LIQUID_MAP_NO_WATER && (!wmoData || gridLiquidData.Level > wmoData->floorZ))
         {
             uint32 liquidEntry = gridLiquidData.Entry;
-            if (GetId() == 530 && liquidEntry == 2)
+            if (GetId() == MAP_OUTLAND && liquidEntry == 2)
                 liquidEntry = 15;
 
             data.liquidInfo = gridLiquidData;
@@ -1616,7 +1560,7 @@ bool Map::isInLineOfSight(float x1, float y1, float z1, float x2, float y2, floa
         }
     }
 
-    if ((checks & LINEOFSIGHT_CHECK_VMAP) && !VMAP::VMapFactory::createOrGetVMapMgr()->isInLineOfSight(GetId(), x1, y1, z1, x2, y2, z2, ignoreFlags))
+    if ((checks & LINEOFSIGHT_CHECK_VMAP) && !_mapCollisionData.GetStaticTree().isInLineOfSight(x1, y1, z1, x2, y2, z2, ignoreFlags))
     {
         return false;
     }
@@ -1629,7 +1573,7 @@ bool Map::isInLineOfSight(float x1, float y1, float z1, float x2, float y2, floa
             ignoreFlags = VMAP::ModelIgnoreFlags::M2;
         }
 
-        if (!_dynamicTree.isInLineOfSight(x1, y1, z1, x2, y2, z2, phasemask, ignoreFlags))
+        if (!_mapCollisionData.GetDynamicTree().isInLineOfSight(x1, y1, z1, x2, y2, z2, phasemask, ignoreFlags))
         {
             return false;
         }
@@ -1638,31 +1582,17 @@ bool Map::isInLineOfSight(float x1, float y1, float z1, float x2, float y2, floa
     return true;
 }
 
-bool Map::GetObjectHitPos(uint32 phasemask, float x1, float y1, float z1, float x2, float y2, float z2, float& rx, float& ry, float& rz, float modifyDist)
-{
-    G3D::Vector3 startPos(x1, y1, z1);
-    G3D::Vector3 dstPos(x2, y2, z2);
-
-    G3D::Vector3 resultPos;
-    bool result = _dynamicTree.GetObjectHitPos(phasemask, startPos, dstPos, resultPos, modifyDist);
-
-    rx = resultPos.x;
-    ry = resultPos.y;
-    rz = resultPos.z;
-    return result;
-}
-
 float Map::GetHeight(uint32 phasemask, float x, float y, float z, bool vmap/*=true*/, float maxSearchDist /*= DEFAULT_HEIGHT_SEARCH*/) const
 {
     float h1, h2;
     h1 = GetHeight(x, y, z, vmap, maxSearchDist);
-    h2 = _dynamicTree.getHeight(x, y, z, maxSearchDist, phasemask);
+    h2 = _mapCollisionData.GetDynamicTree().getHeight(x, y, z, maxSearchDist, phasemask);
     return std::max<float>(h1, h2);
 }
 
 bool Map::IsInWater(uint32 phaseMask, float x, float y, float pZ, float collisionHeight) const
 {
-    LiquidData const& liquidData = const_cast<Map*>(this)->GetLiquidData(phaseMask, x, y, pZ, collisionHeight, MAP_ALL_LIQUIDS);
+    LiquidData const& liquidData = const_cast<Map*>(this)->GetLiquidData(phaseMask, x, y, pZ, collisionHeight, {});
     return (liquidData.Status & MAP_LIQUID_STATUS_SWIMMING) != 0;
 }
 
@@ -1674,14 +1604,16 @@ bool Map::IsUnderWater(uint32 phaseMask, float x, float y, float z, float collis
 
 bool Map::HasEnoughWater(WorldObject const* searcher, float x, float y, float z) const
 {
-    LiquidData const& liquidData = const_cast<Map*>(this)->GetLiquidData(searcher->GetPhaseMask(), x, y, z, searcher->GetCollisionHeight(), MAP_ALL_LIQUIDS);
-    return (liquidData.Status & MAP_LIQUID_STATUS_SWIMMING) != 0 && HasEnoughWater(searcher, liquidData);
-}
+    LiquidData const& liquidData = const_cast<Map*>(this)->GetLiquidData(
+        searcher->GetPhaseMask(), x, y, z, searcher->GetCollisionHeight(), MAP_ALL_LIQUIDS);
 
-bool Map::HasEnoughWater(WorldObject const* searcher, LiquidData const& liquidData) const
-{
+    if ((liquidData.Status & MAP_LIQUID_STATUS_SWIMMING) == 0)
+        return false;
+
     float minHeightInWater = searcher->GetMinHeightInWater();
-    return liquidData.Level > INVALID_HEIGHT && liquidData.Level > liquidData.DepthLevel && liquidData.Level - liquidData.DepthLevel >= minHeightInWater;
+    return liquidData.Level > INVALID_HEIGHT &&
+           liquidData.Level > liquidData.DepthLevel &&
+           liquidData.Level - liquidData.DepthLevel >= minHeightInWater;
 }
 
 char const* Map::GetMapName() const
@@ -1724,48 +1656,58 @@ void Map::SendInitSelf(Player* player)
     player->SendDirectMessage(&packet);
 }
 
+void Map::UpdateExpiredCorpses(uint32 const diff)
+{
+    _corpseUpdateTimer.Update(diff);
+    if (!_corpseUpdateTimer.Passed())
+        return;
+
+    RemoveOldCorpses();
+
+    _corpseUpdateTimer.Reset();
+}
+
 void Map::SendInitTransports(Player* player)
 {
+    if (_transports.empty())
+        return;
+
     // Hack to send out transports
     UpdateData transData;
     for (TransportsContainer::const_iterator itr = _transports.begin(); itr != _transports.end(); ++itr)
-        if (*itr != player->GetTransport())
+        if (*itr != player->GetTransport() && (!sToCloud9Sidecar->ClusterModeEnabled() || player->InSamePhase(*itr)))
             (*itr)->BuildCreateUpdateBlockForPlayer(&transData, player);
+
+    if (!transData.HasData())
+        return;
 
     WorldPacket packet;
     transData.BuildPacket(packet);
-    player->GetSession()->SendPacket(&packet);
+    player->SendDirectMessage(&packet);
 }
 
 void Map::SendRemoveTransports(Player* player)
 {
+    if (_transports.empty())
+        return;
+
     // Hack to send out transports
     UpdateData transData;
     for (TransportsContainer::const_iterator itr = _transports.begin(); itr != _transports.end(); ++itr)
         if (*itr != player->GetTransport())
             (*itr)->BuildOutOfRangeUpdateBlock(&transData);
 
-    // pussywizard: remove static transports from client
-    for (GuidUnorderedSet::const_iterator it = player->m_clientGUIDs.begin(); it != player->m_clientGUIDs.end(); )
-    {
-        if ((*it).IsTransport())
-        {
-            transData.AddOutOfRangeGUID(*it);
-            it = player->m_clientGUIDs.erase(it);
-        }
-        else
-            ++it;
-    }
+    if (!transData.HasData())
+        return;
 
     WorldPacket packet;
     transData.BuildPacket(packet);
-    player->GetSession()->SendPacket(&packet);
+    player->SendDirectMessage(&packet);
 }
 
 void Map::SendObjectUpdates()
 {
     UpdateDataMapType update_players;
-    UpdatePlayerSet player_set;
 
     while (!_updateObjects.empty())
     {
@@ -1773,7 +1715,7 @@ void Map::SendObjectUpdates()
         ASSERT(obj->IsInWorld());
 
         _updateObjects.erase(_updateObjects.begin());
-        obj->BuildUpdate(update_players, player_set);
+        obj->BuildUpdate(update_players);
     }
 
     WorldPacket packet;                                     // here we allocate a std::vector with a size of 0x10000
@@ -1785,8 +1727,9 @@ void Map::SendObjectUpdates()
             continue;
         }
 
+
         iter->second.BuildPacket(packet);
-        iter->first->GetSession()->SendPacket(&packet);
+        iter->first->SendDirectMessage(&packet);
         packet.clear();                                     // clean the string
     }
 }
@@ -1804,12 +1747,25 @@ uint32 Map::ApplyDynamicModeRespawnScaling(WorldObject const* obj, uint32 respaw
     if (obj->GetMap()->Instanceable())
         return respawnDelay;
 
-    // No quest givers or world bosses
     if (Creature const* creature = obj->ToCreature())
+    {
+        // Temporary spawns (no DB spawn id, e.g. summons / battlefield-spawned
+        // creatures such as Wintergrasp turrets) are not part of the respawn system.
+        if (!creature->GetSpawnId())
+            return respawnDelay;
+
+        // No quest givers or world bosses
         if (creature->IsQuestGiver() || creature->isWorldBoss()
             || (creature->GetCreatureTemplate()->rank == CREATURE_ELITE_RARE)
             || (creature->GetCreatureTemplate()->rank == CREATURE_ELITE_RAREELITE))
             return respawnDelay;
+    }
+    // Temporary gameobjects (no DB spawn id) are likewise excluded.
+    else if (GameObject const* go = obj->ToGameObject())
+    {
+        if (!go->GetSpawnId())
+            return respawnDelay;
+    }
 
     auto it = _zonePlayerCountMap.find(obj->GetZoneId());
     if (it == _zonePlayerCountMap.end())
@@ -1831,7 +1787,7 @@ void Map::DelayedUpdate(const uint32 t_diff)
 {
     for (_transportsUpdateIter = _transports.begin(); _transportsUpdateIter != _transports.end();)
     {
-        MotionTransport* transport = *_transportsUpdateIter;
+        Transport* transport = *_transportsUpdateIter;
         ++_transportsUpdateIter;
 
         if (!transport->IsInWorld())
@@ -1853,49 +1809,8 @@ void Map::AddObjectToRemoveList(WorldObject* obj)
     //LOG_DEBUG("maps", "Object ({}) added to removing list.", obj->GetGUID().ToString());
 }
 
-void Map::AddObjectToSwitchList(WorldObject* obj, bool on)
-{
-    ASSERT(obj->GetMapId() == GetId() && obj->GetInstanceId() == GetInstanceId());
-    // i_objectsToSwitch is iterated only in Map::RemoveAllObjectsInRemoveList() and it uses
-    // the contained objects only if IsCreature() , so we can return in all other cases
-    if (!obj->IsCreature() && !obj->IsGameObject())
-        return;
-
-    std::map<WorldObject*, bool>::iterator itr = i_objectsToSwitch.find(obj);
-    if (itr == i_objectsToSwitch.end())
-        i_objectsToSwitch.insert(itr, std::make_pair(obj, on));
-    else if (itr->second != on)
-        i_objectsToSwitch.erase(itr);
-    else
-        ABORT();
-}
-
 void Map::RemoveAllObjectsInRemoveList()
 {
-    while (!i_objectsToSwitch.empty())
-    {
-        std::map<WorldObject*, bool>::iterator itr = i_objectsToSwitch.begin();
-        WorldObject* obj = itr->first;
-        bool on = itr->second;
-        i_objectsToSwitch.erase(itr);
-
-        if (!obj->IsPermanentWorldObject())
-        {
-            switch (obj->GetTypeId())
-            {
-                case TYPEID_UNIT:
-                    SwitchGridContainers<Creature>(obj->ToCreature(), on);
-                    break;
-                case TYPEID_GAMEOBJECT:
-                    SwitchGridContainers<GameObject>(obj->ToGameObject(), on);
-                    break;
-                default:
-                    break;
-            }
-        }
-    }
-
-    //LOG_DEBUG("maps", "Object remover 1 check.");
     while (!i_objectsToRemove.empty())
     {
         std::unordered_set<WorldObject*>::iterator itr = i_objectsToRemove.begin();
@@ -1917,7 +1832,7 @@ void Map::RemoveAllObjectsInRemoveList()
                 RemoveFromMap((DynamicObject*)obj, true);
                 break;
             case TYPEID_GAMEOBJECT:
-                if (MotionTransport* transport = obj->ToGameObject()->ToMotionTransport())
+                if (Transport* transport = obj->ToGameObject()->ToTransport())
                     RemoveFromMap(transport, true);
                 else
                     RemoveFromMap(obj->ToGameObject(), true);
@@ -1933,71 +1848,66 @@ void Map::RemoveAllObjectsInRemoveList()
                 break;
         }
     }
-
-    //LOG_DEBUG("maps", "Object remover 2 check.");
 }
 
-uint32 Map::GetPlayersCountExceptGMs() const
+uint32 Map::GetPlayersCountExceptGMs(bool aliveOnly /*= false*/) const
 {
     uint32 count = 0;
-    for (MapRefMgr::const_iterator itr = m_mapRefMgr.begin(); itr != m_mapRefMgr.end(); ++itr)
-        if (!itr->GetSource()->IsGameMaster())
-            ++count;
+    for (auto const& ref : m_mapRefMgr)
+        if (Player* player = ref.GetSource())
+            if (!player->IsGameMaster() && (!aliveOnly || (player->IsAlive() && !player->HasSpiritOfRedemptionAura())))
+                ++count;
     return count;
+}
+
+void Map::StartPlayersRedirectKickTimer()
+{
+    for (MapRefMgr::iterator itr = m_mapRefMgr.begin(); itr != m_mapRefMgr.end(); ++itr)
+        itr->GetSource()->SendSystemMessage("Preparing to enter parallel dimension... One minute!\nAccelerate transfer: Teleport or type \"/ready\" in chat.");
+
+    _redirectKickTimer.Reset(60 * SECOND * IN_MILLISECONDS);
+    _lastAnnounceRedirectKickTimer.Reset(55 * SECOND * IN_MILLISECONDS);
+
+    _lastAnnounceRedirectKickTimer.Update(1);
+
+}
+
+void Map::StopPlayersRedirectKickTimer()
+{
+    _redirectKickTimer.Reset(0);
+    _lastAnnounceRedirectKickTimer.Reset(0);
+}
+
+void Map::UpdatePlayersRedirectKickEvent(uint32 diff)
+{
+    if (_redirectKickTimer.Passed())
+        return;
+
+    _redirectKickTimer.Update(diff);
+
+    if (_redirectKickTimer.Passed())
+    {
+        auto emptyPacket = WorldPacket();
+        for (MapRefMgr::iterator itr = m_mapRefMgr.begin(); itr != m_mapRefMgr.end(); ++itr)
+            itr->GetSource()->GetSession()->HandleTC9PrepareForRedirect(emptyPacket);
+
+        return;
+    }
+
+    if (_lastAnnounceRedirectKickTimer.Passed())
+        return;
+
+    _lastAnnounceRedirectKickTimer.Update(diff);
+
+    if (_lastAnnounceRedirectKickTimer.Passed())
+        for (MapRefMgr::iterator itr = m_mapRefMgr.begin(); itr != m_mapRefMgr.end(); ++itr)
+            itr->GetSource()->SendSystemMessage("Dimensional shift incoming! Prepare to transition in 5 seconds...");
 }
 
 void Map::SendToPlayers(WorldPacket const* data) const
 {
     for (MapRefMgr::const_iterator itr = m_mapRefMgr.begin(); itr != m_mapRefMgr.end(); ++itr)
-        itr->GetSource()->GetSession()->SendPacket(data);
-}
-
-template<class T>
-void Map::AddToActive(T* obj)
-{
-    AddToActiveHelper(obj);
-}
-
-template <>
-void Map::AddToActive(Creature* c)
-{
-    AddToActiveHelper(c);
-}
-
-template<>
-void Map::AddToActive(DynamicObject* d)
-{
-    AddToActiveHelper(d);
-}
-
-template<>
-void Map::AddToActive(GameObject* d)
-{
-    AddToActiveHelper(d);
-}
-
-template<class T>
-void Map::RemoveFromActive(T* obj)
-{
-    RemoveFromActiveHelper(obj);
-}
-
-template <>
-void Map::RemoveFromActive(Creature* c)
-{
-    RemoveFromActiveHelper(c);
-}
-
-template<>
-void Map::RemoveFromActive(DynamicObject* obj)
-{
-    RemoveFromActiveHelper(obj);
-}
-
-template<>
-void Map::RemoveFromActive(GameObject* obj)
-{
-    RemoveFromActiveHelper(obj);
+        itr->GetSource()->SendDirectMessage(data);
 }
 
 template bool Map::AddToMap(Corpse*, bool);
@@ -2202,7 +2112,7 @@ bool InstanceMap::AddPlayerToMap(Player* player)
             data << uint32(60000);
             data << uint32(instance_data ? instance_data->GetCompletedEncounterMask() : 0);
             data << uint8(0);
-            player->GetSession()->SendPacket(&data);
+            player->SendDirectMessage(&data);
             player->SetPendingBind(mapSave->GetInstanceId(), 60000);
         }
     }
@@ -2265,7 +2175,7 @@ void InstanceMap::CreateInstanceScript(bool load, std::string data, uint32 compl
     if (instance_data)
         isOtherAI = true;
 
-    // if Eluna AI was fetched succesfully we should not call CreateInstanceData nor set the unused scriptID
+    // if ALE AI was fetched succesfully we should not call CreateInstanceData nor set the unused scriptID
     if (!isOtherAI)
     {
         InstanceTemplate const* mInstance = sObjectMgr->GetInstanceTemplate(GetId());
@@ -2279,7 +2189,7 @@ void InstanceMap::CreateInstanceScript(bool load, std::string data, uint32 compl
     if (!instance_data)
         return;
 
-    // use mangos behavior if we are dealing with Eluna AI
+    // use mangos behavior if we are dealing with ALE AI
     // initialize should then be called only if load is false
     if (!isOtherAI || !load)
     {
@@ -2374,7 +2284,7 @@ void InstanceMap::PermBindAllPlayers()
         {
             WorldPacket data(SMSG_INSTANCE_SAVE_CREATED, 4);
             data << uint32(0);
-            player->GetSession()->SendPacket(&data);
+            player->SendDirectMessage(&data);
             sInstanceSaveMgr->PlayerBindToInstance(player->GetGUID(), save, true, player);
         }
 
@@ -2503,27 +2413,27 @@ void BattlegroundMap::RemoveAllPlayers()
                     player->TeleportTo(player->GetEntryPoint());
 }
 
-Corpse* Map::GetCorpse(ObjectGuid const guid)
+Corpse* Map::GetCorpse(ObjectGuid const& guid)
 {
     return _objectsStore.Find<Corpse>(guid);
 }
 
-Creature* Map::GetCreature(ObjectGuid const guid)
+Creature* Map::GetCreature(ObjectGuid const& guid)
 {
     return _objectsStore.Find<Creature>(guid);
 }
 
-GameObject* Map::GetGameObject(ObjectGuid const guid)
+GameObject* Map::GetGameObject(ObjectGuid const& guid)
 {
     return _objectsStore.Find<GameObject>(guid);
 }
 
-Pet* Map::GetPet(ObjectGuid const guid)
+Pet* Map::GetPet(ObjectGuid const& guid)
 {
-    return _objectsStore.Find<Pet>(guid);
+    return dynamic_cast<Pet*>(_objectsStore.Find<Creature>(guid));
 }
 
-Transport* Map::GetTransport(ObjectGuid guid)
+Transport* Map::GetTransport(ObjectGuid const& guid)
 {
     if (guid.GetHigh() != HighGuid::Mo_Transport && guid.GetHigh() != HighGuid::Transport)
         return nullptr;
@@ -2532,7 +2442,7 @@ Transport* Map::GetTransport(ObjectGuid guid)
     return go ? go->ToTransport() : nullptr;
 }
 
-DynamicObject* Map::GetDynamicObject(ObjectGuid guid)
+DynamicObject* Map::GetDynamicObject(ObjectGuid const& guid)
 {
     return _objectsStore.Find<DynamicObject>(guid);
 }
@@ -2556,7 +2466,13 @@ void Map::SaveCreatureRespawnTime(ObjectGuid::LowType spawnId, time_t& respawnTi
     if (GetInstanceResetPeriod() > 0 && respawnTime - now + 5 >= GetInstanceResetPeriod())
         respawnTime = now + YEAR;
 
+    // Remove old queue entry if updating an existing respawn time
+    auto itr = _creatureRespawnTimes.find(spawnId);
+    if (itr != _creatureRespawnTimes.end())
+        _respawnQueue.erase({itr->second, SPAWN_TYPE_CREATURE, spawnId});
+
     _creatureRespawnTimes[spawnId] = respawnTime;
+    _respawnQueue.insert({respawnTime, SPAWN_TYPE_CREATURE, spawnId});
 
     CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_REP_CREATURE_RESPAWN);
     stmt->SetData(0, spawnId);
@@ -2568,7 +2484,12 @@ void Map::SaveCreatureRespawnTime(ObjectGuid::LowType spawnId, time_t& respawnTi
 
 void Map::RemoveCreatureRespawnTime(ObjectGuid::LowType spawnId)
 {
-    _creatureRespawnTimes.erase(spawnId);
+    auto itr = _creatureRespawnTimes.find(spawnId);
+    if (itr != _creatureRespawnTimes.end())
+    {
+        _respawnQueue.erase({itr->second, SPAWN_TYPE_CREATURE, spawnId});
+        _creatureRespawnTimes.erase(itr);
+    }
 
     CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_CREATURE_RESPAWN);
     stmt->SetData(0, spawnId);
@@ -2590,7 +2511,13 @@ void Map::SaveGORespawnTime(ObjectGuid::LowType spawnId, time_t& respawnTime)
     if (GetInstanceResetPeriod() > 0 && respawnTime - now + 5 >= GetInstanceResetPeriod())
         respawnTime = now + YEAR;
 
+    // Remove old queue entry if updating an existing respawn time
+    auto itr = _goRespawnTimes.find(spawnId);
+    if (itr != _goRespawnTimes.end())
+        _respawnQueue.erase({itr->second, SPAWN_TYPE_GAMEOBJECT, spawnId});
+
     _goRespawnTimes[spawnId] = respawnTime;
+    _respawnQueue.insert({respawnTime, SPAWN_TYPE_GAMEOBJECT, spawnId});
 
     CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_REP_GO_RESPAWN);
     stmt->SetData(0, spawnId);
@@ -2602,7 +2529,12 @@ void Map::SaveGORespawnTime(ObjectGuid::LowType spawnId, time_t& respawnTime)
 
 void Map::RemoveGORespawnTime(ObjectGuid::LowType spawnId)
 {
-    _goRespawnTimes.erase(spawnId);
+    auto itr = _goRespawnTimes.find(spawnId);
+    if (itr != _goRespawnTimes.end())
+    {
+        _respawnQueue.erase({itr->second, SPAWN_TYPE_GAMEOBJECT, spawnId});
+        _goRespawnTimes.erase(itr);
+    }
 
     CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_GO_RESPAWN);
     stmt->SetData(0, spawnId);
@@ -2622,9 +2554,10 @@ void Map::LoadRespawnTimes()
         {
             Field* fields = result->Fetch();
             ObjectGuid::LowType lowguid = fields[0].Get<uint32>();
-            uint32 respawnTime = fields[1].Get<uint32>();
+            time_t respawnTime = time_t(fields[1].Get<uint32>());
 
-            _creatureRespawnTimes[lowguid] = time_t(respawnTime);
+            _creatureRespawnTimes[lowguid] = respawnTime;
+            _respawnQueue.insert({respawnTime, SPAWN_TYPE_CREATURE, lowguid});
         } while (result->NextRow());
     }
 
@@ -2637,9 +2570,10 @@ void Map::LoadRespawnTimes()
         {
             Field* fields = result->Fetch();
             ObjectGuid::LowType lowguid = fields[0].Get<uint32>();
-            uint32 respawnTime = fields[1].Get<uint32>();
+            time_t respawnTime = time_t(fields[1].Get<uint32>());
 
-            _goRespawnTimes[lowguid] = time_t(respawnTime);
+            _goRespawnTimes[lowguid] = respawnTime;
+            _respawnQueue.insert({respawnTime, SPAWN_TYPE_GAMEOBJECT, lowguid});
         } while (result->NextRow());
     }
 }
@@ -2648,6 +2582,7 @@ void Map::DeleteRespawnTimes()
 {
     _creatureRespawnTimes.clear();
     _goRespawnTimes.clear();
+    _respawnQueue.clear();
 
     DeleteRespawnTimesInDB(GetId(), GetInstanceId());
 }
@@ -2663,6 +2598,328 @@ void Map::DeleteRespawnTimesInDB(uint16 mapId, uint32 instanceId)
     stmt->SetData(0, mapId);
     stmt->SetData(1, instanceId);
     CharacterDatabase.Execute(stmt);
+}
+
+bool Map::IsSpawnGroupActive(uint32 groupId) const
+{
+    SpawnGroupTemplateData const* data = sObjectMgr->GetSpawnGroupData(groupId);
+    if (!data)
+        return false;
+
+    // System groups are always active
+    if (data->flags & SPAWNGROUP_FLAG_SYSTEM)
+        return true;
+
+    // Per-map toggled state: XOR with default.
+    // MANUAL_SPAWN groups default to inactive; toggling makes them active.
+    // Non-MANUAL groups default to active; toggling makes them inactive.
+    bool toggled = _toggledSpawnGroupIds.count(groupId) != 0;
+    bool defaultActive = !(data->flags & SPAWNGROUP_FLAG_MANUAL_SPAWN);
+    return toggled != defaultActive; // XOR: toggled flips the default
+}
+
+bool Map::SpawnGroupSpawn(uint32 groupId, bool ignoreRespawn /*= false*/, bool force /*= false*/)
+{
+    SpawnGroupTemplateData const* groupData = sObjectMgr->GetSpawnGroupData(groupId);
+    if (!groupData || (groupData->flags & SPAWNGROUP_FLAG_SYSTEM))
+    {
+        LOG_ERROR("maps", "Tried to spawn non-existing (or system) spawn group {}. Blocked.", groupId);
+        return false;
+    }
+
+    if (groupData->mapId != SPAWNGROUP_MAP_UNSET && groupData->mapId != GetId())
+    {
+        LOG_ERROR("maps", "Tried to spawn group {} on map {}, but group has map {}. Blocked.",
+            groupId, GetId(), groupData->mapId);
+        return false;
+    }
+
+    // Mark group as active on this map (toggle to active state)
+    if (groupData->flags & SPAWNGROUP_FLAG_MANUAL_SPAWN)
+        _toggledSpawnGroupIds.insert(groupId);
+    else
+        _toggledSpawnGroupIds.erase(groupId);
+
+    auto range = sObjectMgr->GetSpawnDataForGroup(groupId);
+    for (auto it = range.first; it != range.second; ++it)
+    {
+        SpawnData const* data = it->second;
+        ObjectGuid::LowType spawnId = data->spawnId;
+
+        // Check if there's already an alive instance
+        if (!force)
+        {
+            if (data->type == SPAWN_TYPE_CREATURE)
+            {
+                auto bounds = _creatureBySpawnIdStore.equal_range(spawnId);
+                bool alive = false;
+                for (auto itr = bounds.first; itr != bounds.second; ++itr)
+                    if (itr->second->IsAlive())
+                        alive = true;
+                if (alive)
+                    continue;
+            }
+            else if (data->type == SPAWN_TYPE_GAMEOBJECT)
+            {
+                if (_gameobjectBySpawnIdStore.count(spawnId))
+                    continue;
+            }
+        }
+
+        time_t respawnTime = GetRespawnTime(data->type, spawnId);
+        if (respawnTime && respawnTime > GameTime::GetGameTime().count())
+        {
+            if (!force && !ignoreRespawn)
+                continue;
+            RemoveRespawnTime(data->type, spawnId);
+        }
+
+        // Don't spawn if grid isn't loaded (will be handled in grid loader)
+        if (!IsGridLoaded(data->posX, data->posY))
+            continue;
+
+        switch (data->type)
+        {
+            case SPAWN_TYPE_CREATURE:
+            {
+                Creature* creature = new Creature();
+                if (!creature->LoadCreatureFromDB(spawnId, this, true, true))
+                    delete creature;
+                break;
+            }
+            case SPAWN_TYPE_GAMEOBJECT:
+            {
+                GameObject* gameobject = new GameObject();
+                if (!gameobject->LoadGameObjectFromDB(spawnId, this, true))
+                    delete gameobject;
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    return true;
+}
+
+bool Map::SpawnGroupDespawn(uint32 groupId, bool deleteRespawnTimes /*= false*/)
+{
+    SpawnGroupTemplateData const* groupData = sObjectMgr->GetSpawnGroupData(groupId);
+    if (!groupData || (groupData->flags & SPAWNGROUP_FLAG_SYSTEM))
+    {
+        LOG_ERROR("maps", "Tried to despawn non-existing (or system) spawn group {}. Blocked.", groupId);
+        return false;
+    }
+
+    if (groupData->mapId != SPAWNGROUP_MAP_UNSET && groupData->mapId != GetId())
+    {
+        LOG_ERROR("maps", "Tried to despawn group {} on map {}, but group has map {}. Blocked.",
+            groupId, GetId(), groupData->mapId);
+        return false;
+    }
+
+    // Mark group as inactive on this map (toggle to inactive state)
+    if (groupData->flags & SPAWNGROUP_FLAG_MANUAL_SPAWN)
+        _toggledSpawnGroupIds.erase(groupId);
+    else
+        _toggledSpawnGroupIds.insert(groupId);
+
+    std::vector<WorldObject*> toUnload;
+    auto range = sObjectMgr->GetSpawnDataForGroup(groupId);
+    for (auto it = range.first; it != range.second; ++it)
+    {
+        SpawnData const* data = it->second;
+        ObjectGuid::LowType spawnId = data->spawnId;
+
+        if (deleteRespawnTimes)
+            RemoveRespawnTime(data->type, spawnId);
+
+        switch (data->type)
+        {
+            case SPAWN_TYPE_CREATURE:
+            {
+                auto bounds = _creatureBySpawnIdStore.equal_range(spawnId);
+                for (auto itr = bounds.first; itr != bounds.second; ++itr)
+                    toUnload.emplace_back(itr->second);
+                break;
+            }
+            case SPAWN_TYPE_GAMEOBJECT:
+            {
+                auto bounds = _gameobjectBySpawnIdStore.equal_range(spawnId);
+                for (auto itr = bounds.first; itr != bounds.second; ++itr)
+                    toUnload.emplace_back(itr->second);
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    for (WorldObject* obj : toUnload)
+        obj->AddObjectToRemoveList();
+
+    return true;
+}
+
+void Map::ProcessRespawns()
+{
+    time_t now = GameTime::GetGameTime().count();
+
+    // Process due respawns from the time-ordered queue.
+    // Entries are sorted by respawnTime — once we hit a future time, we're done.
+    while (!_respawnQueue.empty())
+    {
+        auto it = _respawnQueue.begin();
+        if (it->respawnTime > now)
+            break; // nothing else is due this tick
+
+        SpawnObjectType type = it->type;
+        ObjectGuid::LowType spawnId = it->spawnId;
+
+        // Remove from queue first — handlers below call Remove*RespawnTime()
+        // which also erases from queue, so we must pop before processing.
+        _respawnQueue.erase(it);
+
+        if (type == SPAWN_TYPE_CREATURE)
+            ProcessCreatureRespawn(spawnId);
+        else if (type == SPAWN_TYPE_GAMEOBJECT)
+            ProcessGameObjectRespawn(spawnId);
+    }
+}
+
+void Map::ProcessCreatureRespawn(ObjectGuid::LowType spawnId)
+{
+    // Pool members are handled entirely by the pool system on this map's pool data
+    if (uint32 poolId = sPoolMgr->IsPartOfAPool<Creature>(spawnId))
+    {
+        sPoolMgr->UpdatePool<Creature>(GetPoolData(), poolId, spawnId);
+        RemoveCreatureRespawnTime(spawnId);
+        return;
+    }
+
+    CreatureData const* data = sObjectMgr->GetCreatureData(spawnId);
+    if (!data)
+    {
+        RemoveCreatureRespawnTime(spawnId);
+        return;
+    }
+
+    // Compat-mode creatures handle their own respawn in-place — don't interfere.
+    // Clean up the stale respawn time entry since the legacy system manages these.
+    SpawnGroupTemplateData const* groupData = sObjectMgr->GetSpawnGroupData(data->spawnGroupId);
+    if (!groupData || (groupData->flags & SPAWNGROUP_FLAG_COMPATIBILITY_MODE))
+    {
+        RemoveCreatureRespawnTime(spawnId);
+        return;
+    }
+
+    // Don't respawn if the spawn group is not active
+    if (!IsSpawnGroupActive(data->spawnGroupId))
+    {
+        // Re-queue — will be checked again next ProcessRespawns() tick
+        _respawnQueue.insert({GameTime::GetGameTime().count() + 5, SPAWN_TYPE_CREATURE, spawnId});
+        return;
+    }
+
+    // Skip if grid isn't loaded (will be handled in grid loader)
+    if (!IsGridLoaded(data->posX, data->posY))
+    {
+        _respawnQueue.insert({GameTime::GetGameTime().count() + 5, SPAWN_TYPE_CREATURE, spawnId});
+        return;
+    }
+
+    // Skip if already alive
+    auto bounds = _creatureBySpawnIdStore.equal_range(spawnId);
+    for (auto itr = bounds.first; itr != bounds.second; ++itr)
+    {
+        if (itr->second->IsAlive())
+        {
+            RemoveCreatureRespawnTime(spawnId);
+            return;
+        }
+    }
+
+    // Check linked_respawn: don't spawn if the master creature is still dead.
+    // This mirrors the check in Creature::Respawn() for compat-mode creatures:
+    // hard-reset creatures bypass it (they despawn on evade and must always
+    // come back), and a creature linked to itself never auto-respawns.
+    ObjectGuid dbtableHighGuid = ObjectGuid::Create<HighGuid::Unit>(data->id, spawnId);
+    time_t linkedRespawntime = GetLinkedRespawnTime(dbtableHighGuid);
+    CreatureTemplate const* cInfo = sObjectMgr->GetCreatureTemplate(data->id);
+    if (linkedRespawntime && !(cInfo && cInfo->HasFlagsExtra(CREATURE_FLAG_EXTRA_HARD_RESET)))
+    {
+        time_t now = GameTime::GetGameTime().count();
+        time_t newRespawnTime;
+        if (sObjectMgr->GetLinkedRespawnGuid(dbtableHighGuid) == dbtableHighGuid)
+            newRespawnTime = now + DAY; // if linking self, never respawn (check delayed to next day)
+        else
+            newRespawnTime = (now > linkedRespawntime ? now : linkedRespawntime) + urand(5, MINUTE); // master is still dead; re-queue at the master's respawn time + a small offset
+        SaveCreatureRespawnTime(spawnId, newRespawnTime);
+        return;
+    }
+
+    // Remove respawn time BEFORE LoadFromDB, otherwise the creature
+    // reads it back and loads as DEAD instead of ALIVE
+    RemoveCreatureRespawnTime(spawnId);
+
+    Creature* creature = new Creature();
+    if (!creature->LoadCreatureFromDB(spawnId, this, true, true))
+        delete creature;
+}
+
+void Map::ProcessGameObjectRespawn(ObjectGuid::LowType spawnId)
+{
+    // Pool members are handled entirely by the pool system on this map's pool data
+    if (uint32 poolId = sPoolMgr->IsPartOfAPool<GameObject>(spawnId))
+    {
+        sPoolMgr->UpdatePool<GameObject>(GetPoolData(), poolId, spawnId);
+        RemoveGORespawnTime(spawnId);
+        return;
+    }
+
+    GameObjectData const* data = sObjectMgr->GetGameObjectData(spawnId);
+    if (!data)
+    {
+        RemoveGORespawnTime(spawnId);
+        return;
+    }
+
+    // Compat-mode gameobjects handle their own respawn — don't interfere.
+    // Clean up the stale respawn time entry since the legacy system manages these.
+    SpawnGroupTemplateData const* groupData = sObjectMgr->GetSpawnGroupData(data->spawnGroupId);
+    if (!groupData || (groupData->flags & SPAWNGROUP_FLAG_COMPATIBILITY_MODE))
+    {
+        RemoveGORespawnTime(spawnId);
+        return;
+    }
+
+    // Don't respawn if the spawn group is not active
+    if (!IsSpawnGroupActive(data->spawnGroupId))
+    {
+        _respawnQueue.insert({GameTime::GetGameTime().count() + 5, SPAWN_TYPE_GAMEOBJECT, spawnId});
+        return;
+    }
+
+    // Skip if grid isn't loaded (will be handled in grid loader)
+    if (!IsGridLoaded(data->posX, data->posY))
+    {
+        _respawnQueue.insert({GameTime::GetGameTime().count() + 5, SPAWN_TYPE_GAMEOBJECT, spawnId});
+        return;
+    }
+
+    if (_gameobjectBySpawnIdStore.count(spawnId))
+    {
+        RemoveGORespawnTime(spawnId);
+        return;
+    }
+
+    // Remove respawn time BEFORE LoadFromDB, otherwise the GO
+    // reads it back and loads as despawned
+    RemoveGORespawnTime(spawnId);
+
+    GameObject* gameobject = new GameObject();
+    if (!gameobject->LoadGameObjectFromDB(spawnId, this, true))
+        delete gameobject;
 }
 
 void Map::UpdateEncounterState(EncounterCreditType type, uint32 creditEntry, Unit* source)
@@ -2744,7 +3001,7 @@ void Map::LogEncounterFinished(EncounterCreditType type, uint32 creditEntry)
         if (Player* p = itr->GetSource())
         {
             std::string auraStr;
-            const Unit::AuraApplicationMap& a = p->GetAppliedAuras();
+            Unit::AuraApplicationMap const& a = p->GetAppliedAuras();
             for (auto iterator = a.begin(); iterator != a.end(); ++iterator)
             {
                 snprintf(buffer2, 255, "%u(%u) ", iterator->first, iterator->second->GetEffectMask());
@@ -2795,7 +3052,8 @@ void Map::AddCorpse(Corpse* corpse)
 {
     corpse->SetMap(this);
 
-    _corpsesByCell[corpse->GetCellCoord().GetId()].insert(corpse);
+    GridCoord const gridCoord = Acore::ComputeGridCoord(corpse->GetPositionX(), corpse->GetPositionY());
+    _corpsesByGrid[gridCoord.GetId()].insert(corpse);
     if (corpse->GetType() != CORPSE_BONES)
         _corpsesByPlayer[corpse->GetOwnerGUID()] = corpse;
     else
@@ -2805,8 +3063,9 @@ void Map::AddCorpse(Corpse* corpse)
 void Map::RemoveCorpse(Corpse* corpse)
 {
     ASSERT(corpse);
+    GridCoord const gridCoord = Acore::ComputeGridCoord(corpse->GetPositionX(), corpse->GetPositionY());
 
-    corpse->DestroyForNearbyPlayers();
+    corpse->DestroyForVisiblePlayers();
     if (corpse->IsInGrid())
         RemoveFromMap(corpse, false);
     else
@@ -2815,14 +3074,14 @@ void Map::RemoveCorpse(Corpse* corpse)
         corpse->ResetMap();
     }
 
-    _corpsesByCell[corpse->GetCellCoord().GetId()].erase(corpse);
+    _corpsesByGrid[gridCoord.GetId()].erase(corpse);
     if (corpse->GetType() != CORPSE_BONES)
         _corpsesByPlayer.erase(corpse->GetOwnerGUID());
     else
         _corpseBones.erase(corpse);
 }
 
-Corpse* Map::ConvertCorpseToBones(ObjectGuid const ownerGuid, bool insignia /*= false*/)
+Corpse* Map::ConvertCorpseToBones(ObjectGuid const& ownerGuid, bool insignia /*= false*/)
 {
     Corpse* corpse = GetCorpseByPlayer(ownerGuid);
     if (!corpse)
@@ -2841,7 +3100,7 @@ Corpse* Map::ConvertCorpseToBones(ObjectGuid const ownerGuid, bool insignia /*= 
     // ignore bones creating option in case insignia
     if ((insignia ||
         (IsBattlegroundOrArena() ? sWorld->getBoolConfig(CONFIG_DEATH_BONES_BG_OR_ARENA) : sWorld->getBoolConfig(CONFIG_DEATH_BONES_WORLD))) &&
-        !IsGridCreated(corpse->GetPositionX(), corpse->GetPositionY()))
+        IsGridLoaded(corpse->GetPositionX(), corpse->GetPositionY()))
     {
         // Create bones, don't change Corpse
         bones = new Corpse();
@@ -2903,18 +3162,46 @@ void Map::RemoveOldCorpses()
 
 void Map::ScheduleCreatureRespawn(ObjectGuid creatureGuid, Milliseconds respawnTimer, Position pos)
 {
-    _creatureRespawnScheduler.Schedule(respawnTimer, [this, creatureGuid, pos](TaskContext)
+    Events.AddEventAtOffset([this, creatureGuid, pos]()
     {
         if (Creature* creature = GetCreature(creatureGuid))
             creature->Respawn();
         else
             SummonCreature(creatureGuid.GetEntry(), pos);
-    });
+    }, respawnTimer);
 }
 
-void Map::SendZoneDynamicInfo(Player* player)
+/// Send a packet to all players (or players selected team) in the zone (except self if mentioned)
+bool Map::SendZoneMessage(uint32 zone, WorldPacket const* packet, WorldSession const* self, TeamId teamId) const
 {
-    uint32 zoneId = player->GetZoneId();
+    bool foundPlayerToSend = false;
+
+    for (MapReference const& ref : GetPlayers())
+    {
+        Player* player = ref.GetSource();
+        if (player->IsInWorld() &&
+            player->GetZoneId() == zone &&
+            player->GetSession() != self &&
+            (teamId == TEAM_NEUTRAL || player->GetTeamId() == teamId))
+        {
+            player->SendDirectMessage(packet);
+            foundPlayerToSend = true;
+        }
+    }
+
+    return foundPlayerToSend;
+}
+
+/// Send a System Message to all players in the zone (except self if mentioned)
+void Map::SendZoneText(uint32 zoneId, char const* text, WorldSession const* self, TeamId teamId) const
+{
+    WorldPacket data;
+    ChatHandler::BuildChatPacket(data, CHAT_MSG_SYSTEM, LANG_UNIVERSAL, nullptr, nullptr, text);
+    SendZoneMessage(zoneId, &data, self, teamId);
+}
+
+void Map::SendZoneDynamicInfo(uint32 zoneId, Player* player) const
+{
     ZoneDynamicInfoMap::const_iterator itr = _zoneDynamicInfo.find(zoneId);
     if (itr == _zoneDynamicInfo.end())
         return;
@@ -2922,20 +3209,51 @@ void Map::SendZoneDynamicInfo(Player* player)
     if (uint32 music = itr->second.MusicId)
         player->SendDirectMessage(WorldPackets::Misc::PlayMusic(music).Write());
 
-    if (WeatherState weatherId = itr->second.WeatherId)
-    {
-        WorldPackets::Misc::Weather weather(weatherId, itr->second.WeatherGrade);
-        player->SendDirectMessage(weather.Write());
-    }
+    SendZoneWeather(itr->second, player);
 
     if (uint32 overrideLight = itr->second.OverrideLightId)
     {
-        WorldPacket data(SMSG_OVERRIDE_LIGHT, 4 + 4 + 1);
+        WorldPacket data(SMSG_OVERRIDE_LIGHT, 4 + 4 + 4);
         data << uint32(_defaultLight);
         data << uint32(overrideLight);
         data << uint32(itr->second.LightFadeInTime);
         player->SendDirectMessage(&data);
     }
+}
+
+void Map::SendZoneWeather(uint32 zoneId, Player* player) const
+{
+    ZoneDynamicInfoMap::const_iterator itr = _zoneDynamicInfo.find(zoneId);
+    if (itr == _zoneDynamicInfo.end())
+        return;
+
+    SendZoneWeather(itr->second, player);
+}
+
+void Map::SendZoneWeather(ZoneDynamicInfo const& zoneDynamicInfo, Player* player) const
+{
+    if (WeatherState weatherId = zoneDynamicInfo.WeatherId)
+    {
+        WorldPackets::Misc::Weather weather(weatherId, zoneDynamicInfo.WeatherGrade);
+        player->SendDirectMessage(weather.Write());
+    }
+    else if (zoneDynamicInfo.DefaultWeather)
+        zoneDynamicInfo.DefaultWeather->SendWeatherUpdateToPlayer(player);
+    else
+        Weather::SendFineWeatherUpdateToPlayer(player);
+}
+
+void Map::UpdateWeather(uint32 const diff)
+{
+    _weatherUpdateTimer.Update(diff);
+    if (!_weatherUpdateTimer.Passed())
+        return;
+
+    for (auto&& zoneInfo : _zoneDynamicInfo)
+        if (zoneInfo.second.DefaultWeather && !zoneInfo.second.DefaultWeather->Update(_weatherUpdateTimer.GetInterval()))
+            zoneInfo.second.DefaultWeather.reset();
+
+    _weatherUpdateTimer.Reset();
 }
 
 void Map::PlayDirectSoundToMap(uint32 soundId, uint32 zoneId)
@@ -2955,67 +3273,50 @@ void Map::PlayDirectSoundToMap(uint32 soundId, uint32 zoneId)
 
 void Map::SetZoneMusic(uint32 zoneId, uint32 musicId)
 {
-    if (_zoneDynamicInfo.find(zoneId) == _zoneDynamicInfo.end())
-        _zoneDynamicInfo.insert(ZoneDynamicInfoMap::value_type(zoneId, ZoneDynamicInfo()));
-
     _zoneDynamicInfo[zoneId].MusicId = musicId;
 
-    Map::PlayerList const& players = GetPlayers();
-    if (!players.IsEmpty())
-    {
-        WorldPackets::Misc::PlayMusic playMusic(musicId);
-        playMusic.Write();
+    WorldPackets::Misc::PlayMusic playMusic(musicId);
+    SendZoneMessage(zoneId, WorldPackets::Misc::PlayMusic(musicId).Write());
+}
 
-        for (Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
-            if (Player* player = itr->GetSource())
-                if (player->GetZoneId() == zoneId)
-                    player->SendDirectMessage(playMusic.GetRawPacket());
+Weather* Map::GetOrGenerateZoneDefaultWeather(uint32 zoneId)
+{
+    WeatherData const* weatherData = WeatherMgr::GetWeatherData(zoneId);
+    if (!weatherData)
+        return nullptr;
+
+    ZoneDynamicInfo& info = _zoneDynamicInfo[zoneId];
+
+    if (!info.DefaultWeather)
+    {
+        info.DefaultWeather = std::make_unique<Weather>(this, zoneId, weatherData);
+        info.DefaultWeather->ReGenerate();
+        info.DefaultWeather->UpdateWeather();
     }
+
+    return info.DefaultWeather.get();
 }
 
 void Map::SetZoneWeather(uint32 zoneId, WeatherState weatherId, float weatherGrade)
 {
-    if (_zoneDynamicInfo.find(zoneId) == _zoneDynamicInfo.end())
-        _zoneDynamicInfo.insert(ZoneDynamicInfoMap::value_type(zoneId, ZoneDynamicInfo()));
-
     ZoneDynamicInfo& info = _zoneDynamicInfo[zoneId];
     info.WeatherId = weatherId;
     info.WeatherGrade = weatherGrade;
-    Map::PlayerList const& players = GetPlayers();
 
-    if (!players.IsEmpty())
-    {
-        WorldPackets::Misc::Weather weather(weatherId, weatherGrade);
-
-        for (Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
-            if (Player* player = itr->GetSource())
-                if (player->GetZoneId() == zoneId)
-                    player->SendDirectMessage(weather.Write());
-    }
+    SendZoneMessage(zoneId, WorldPackets::Misc::Weather(weatherId, weatherGrade).Write());
 }
 
 void Map::SetZoneOverrideLight(uint32 zoneId, uint32 lightId, Milliseconds fadeInTime)
 {
-    if (_zoneDynamicInfo.find(zoneId) == _zoneDynamicInfo.end())
-        _zoneDynamicInfo.insert(ZoneDynamicInfoMap::value_type(zoneId, ZoneDynamicInfo()));
-
     ZoneDynamicInfo& info = _zoneDynamicInfo[zoneId];
     info.OverrideLightId = lightId;
     info.LightFadeInTime = static_cast<uint32>(fadeInTime.count());
-    Map::PlayerList const& players = GetPlayers();
 
-    if (!players.IsEmpty())
-    {
-        WorldPacket data(SMSG_OVERRIDE_LIGHT, 4 + 4 + 4);
-        data << uint32(_defaultLight);
-        data << uint32(lightId);
-        data << uint32(static_cast<uint32>(fadeInTime.count()));
-
-        for (Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
-            if (Player* player = itr->GetSource())
-                if (player->GetZoneId() == zoneId)
-                    player->SendDirectMessage(&data);
-    }
+    WorldPacket data(SMSG_OVERRIDE_LIGHT, 4 + 4 + 4);
+    data << uint32(_defaultLight);
+    data << uint32(lightId);
+    data << uint32(static_cast<uint32>(fadeInTime.count()));
+    SendZoneMessage(zoneId, &data);
 }
 
 void Map::DoForAllPlayers(std::function<void(Player*)> exec)
@@ -3159,8 +3460,7 @@ bool Map::CheckCollisionAndGetValidCoords(WorldObject const* source, float start
     // Unit is not on the ground, check for potential collision via vmaps
     if (notOnGround)
     {
-        bool col = VMAP::VMapFactory::createOrGetVMapMgr()->GetObjectHitPos(source->GetMapId(),
-            startX, startY, startZ + halfHeight,
+        bool col = _mapCollisionData.GetStaticTree().GetObjectHitPos(startX, startY, startZ + halfHeight,
             destX, destY, destZ + halfHeight,
             destX, destY, destZ, -CONTACT_DISTANCE);
 
@@ -3174,7 +3474,7 @@ bool Map::CheckCollisionAndGetValidCoords(WorldObject const* source, float start
     }
 
     // check dynamic collision
-    bool col = source->GetMap()->GetObjectHitPos(source->GetPhaseMask(),
+    bool col = _mapCollisionData.GetDynamicTree().GetObjectHitPos(source->GetPhaseMask(),
         startX, startY, startZ + halfHeight,
         destX, destY, destZ + halfHeight,
         destX, destY, destZ, -CONTACT_DISTANCE);

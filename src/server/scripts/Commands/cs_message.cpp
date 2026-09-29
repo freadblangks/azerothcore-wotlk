@@ -1,26 +1,19 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-
-/* ScriptData
-Name: message_commandscript
-%Complete: 100
-Comment: All message related commands
-Category: commandscripts
-EndScriptData */
 
 #include "Channel.h"
 #include "Chat.h"
@@ -30,6 +23,7 @@ EndScriptData */
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "Player.h"
+#include "RBAC.h"
 #include "World.h"
 #include "WorldSession.h"
 #include "WorldSessionMgr.h"
@@ -45,13 +39,13 @@ public:
     {
         static ChatCommandTable commandTable =
         {
-            { "nameannounce",   HandleNameAnnounceCommand,   SEC_GAMEMASTER, Console::Yes },
-            { "gmnameannounce", HandleGMNameAnnounceCommand, SEC_GAMEMASTER, Console::Yes },
-            { "announce",       HandleAnnounceCommand,       SEC_GAMEMASTER, Console::Yes },
-            { "gmannounce",     HandleGMAnnounceCommand,     SEC_GAMEMASTER, Console::Yes },
-            { "notify",         HandleNotifyCommand,         SEC_GAMEMASTER, Console::Yes },
-            { "gmnotify",       HandleGMNotifyCommand,       SEC_GAMEMASTER, Console::Yes },
-            { "whispers",       HandleWhispersCommand,       SEC_MODERATOR,  Console::No },
+            { "nameannounce",   HandleNameAnnounceCommand,   rbac::RBAC_PERM_COMMAND_NAMEANNOUNCE,   Console::Yes },
+            { "gmnameannounce", HandleGMNameAnnounceCommand, rbac::RBAC_PERM_COMMAND_GMNAMEANNOUNCE, Console::Yes },
+            { "announce",       HandleAnnounceCommand,       rbac::RBAC_PERM_COMMAND_ANNOUNCE,       Console::Yes },
+            { "gmannounce",     HandleGMAnnounceCommand,     rbac::RBAC_PERM_COMMAND_GMANNOUNCE,     Console::Yes },
+            { "notify",         HandleNotifyCommand,         rbac::RBAC_PERM_COMMAND_NOTIFY,         Console::Yes },
+            { "gmnotify",       HandleGMNotifyCommand,       rbac::RBAC_PERM_COMMAND_GMNOTIFY,       Console::Yes },
+            { "whispers",       HandleWhispersCommand,       rbac::RBAC_PERM_CAN_FILTER_WHISPERS,    Console::No },
         };
         return commandTable;
     }

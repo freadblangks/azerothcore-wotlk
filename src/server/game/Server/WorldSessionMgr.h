@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -19,15 +19,23 @@
 #define __WORLDSESSIONMGR_H
 
 #include "Common.h"
+#include "Duration.h"
 #include "IWorld.h"
 #include "LockedQueue.h"
 #include "ObjectGuid.h"
 #include <list>
+#include <map>
 #include <unordered_map>
 
 class Player;
 class WorldPacket;
 class WorldSession;
+
+struct AccountPlayHistory
+{
+    Seconds logoutTime = Seconds::zero();
+    Seconds playedTime = Seconds::zero(); // reset after 5 hours offline time
+};
 
 class WorldSessionMgr
 {
@@ -81,8 +89,6 @@ public:
 
     void SendGlobalMessage(WorldPacket const* packet, WorldSession* self = nullptr, TeamId teamId = TEAM_NEUTRAL);
     void SendGlobalGMMessage(WorldPacket const* packet, WorldSession* self = nullptr, TeamId teamId = TEAM_NEUTRAL);
-    bool SendZoneMessage(uint32 zone, WorldPacket const* packet, WorldSession* self = nullptr, TeamId teamId = TEAM_NEUTRAL);
-    void SendZoneText(uint32 zone, std::string text, WorldSession* self = nullptr, TeamId teamId = TEAM_NEUTRAL);
     void SendServerMessage(ServerMessageType messageID, std::string stringParam = "", Player* player = nullptr);
 
     void DoForAllOnlinePlayers(std::function<void(Player*)> exec);
@@ -93,6 +99,7 @@ private:
 
     SessionMap _sessions;
     SessionMap _offlineSessions;
+    std::map<uint32 /*accountId*/, AccountPlayHistory> _accountsPlayHistory;
 
     typedef std::unordered_map<uint32, time_t> DisconnectMap;
     DisconnectMap _disconnects;
@@ -105,6 +112,7 @@ private:
     uint32 _maxQueuedSessionCount;
     uint32 _playerCount;
     uint32 _maxPlayerCount;
+    uint32 _accountsPlayHistoryPruneTimer;
 };
 
 #define sWorldSessionMgr WorldSessionMgr::Instance()

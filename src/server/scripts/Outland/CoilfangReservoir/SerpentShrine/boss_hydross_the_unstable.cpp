@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -81,18 +81,17 @@ enum Misc
 
 enum WaterElementalPathIds
 {
-    PATH_CENTER                     = 5,
-    PATH_END                        = 12
+    PATH_CENTER                     = 6,
+    PATH_END                        = 13
 };
 
 struct boss_hydross_the_unstable : public BossAI
 {
-    boss_hydross_the_unstable(Creature* creature) : BossAI(creature, DATA_HYDROSS_THE_UNSTABLE), _recentlySpoken(false) { }
+    boss_hydross_the_unstable(Creature* creature) : BossAI(creature, DATA_HYDROSS_THE_UNSTABLE) { }
 
     void Reset() override
     {
         _Reset();
-        _recentlySpoken = false;
         SummonTaintedElementalOOC();
     }
 
@@ -249,15 +248,7 @@ struct boss_hydross_the_unstable : public BossAI
 
     void KilledUnit(Unit* /*victim*/) override
     {
-        if (!_recentlySpoken)
-        {
-            Talk(me->HasAura(SPELL_CORRUPTION) ? SAY_CORRUPT_SLAY : SAY_CLEAN_SLAY);
-            _recentlySpoken = true;
-        }
-        scheduler.Schedule(6s, [this](TaskContext)
-        {
-            _recentlySpoken = false;
-        });
+        Talk(me->HasAura(SPELL_CORRUPTION) ? SAY_CORRUPT_SLAY : SAY_CLEAN_SLAY);
     }
 
     void JustSummoned(Creature* summon) override
@@ -273,7 +264,7 @@ struct boss_hydross_the_unstable : public BossAI
         else if (summon->GetEntry() == NPC_TAINTED_HYDROSS_ELEMENTAL)
         {
             summon->setActive(true);
-            summon->GetMotionMaster()->MovePath(summon->GetEntry() * 10, false);
+            summon->GetMotionMaster()->MoveWaypoint(summon->GetEntry() * 10, false);
         }
         else
         {
@@ -291,8 +282,6 @@ struct boss_hydross_the_unstable : public BossAI
         Talk(me->HasAura(SPELL_CORRUPTION) ? SAY_CORRUPT_DEATH : SAY_CLEAN_DEATH);
         BossAI::JustDied(killer);
     }
-private:
-    bool _recentlySpoken;
 };
 
 class spell_hydross_cleansing_field_aura : public AuraScript

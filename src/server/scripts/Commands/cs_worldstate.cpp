@@ -1,30 +1,24 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
- /* ScriptData
- Name: worldstate_commandscript
- %Complete: 100
- Comment: All worldstate related commands
- Category: commandscripts
- EndScriptData */
-
 #include "Chat.h"
 #include "CommandScript.h"
 #include "Common.h"
+#include "RBAC.h"
 #include "WorldState.h"
 
 using namespace Acore::ChatCommands;
@@ -38,17 +32,26 @@ public:
     {
         static ChatCommandTable sunsreachCommandTable =
         {
-            { "status",      HandleSunsReachReclamationStatusCommand,   SEC_ADMINISTRATOR, Console::Yes },
-            { "phase",       HandleSunsReachReclamationPhaseCommand,    SEC_ADMINISTRATOR, Console::Yes },
-            { "subphase",    HandleSunsReachReclamationSubPhaseCommand, SEC_ADMINISTRATOR, Console::Yes },
-            { "counter",     HandleSunsReachReclamationCounterCommand,  SEC_ADMINISTRATOR, Console::Yes },
-            { "gate",        HandleSunwellGateCommand,                  SEC_ADMINISTRATOR, Console::Yes },
-            { "gatecounter", HandleSunwellGateCounterCommand,           SEC_ADMINISTRATOR, Console::Yes },
+            { "status",      HandleSunsReachReclamationStatusCommand,   rbac::RBAC_PERM_COMMAND_DEBUG, Console::Yes },
+            { "phase",       HandleSunsReachReclamationPhaseCommand,    rbac::RBAC_PERM_COMMAND_DEBUG, Console::Yes },
+            { "subphase",    HandleSunsReachReclamationSubPhaseCommand, rbac::RBAC_PERM_COMMAND_DEBUG, Console::Yes },
+            { "counter",     HandleSunsReachReclamationCounterCommand,  rbac::RBAC_PERM_COMMAND_DEBUG, Console::Yes },
+            { "gate",        HandleSunwellGateCommand,                  rbac::RBAC_PERM_COMMAND_DEBUG, Console::Yes },
+            { "gatecounter", HandleSunwellGateCounterCommand,           rbac::RBAC_PERM_COMMAND_DEBUG, Console::Yes },
+        };
+
+        static ChatCommandTable scourgeInvasionCommandTable =
+        {
+            { "show",       HandleScourgeInvasionCommand,           rbac::RBAC_PERM_COMMAND_DEBUG, Console::Yes },
+            { "state",      HandleScourgeInvasionStateCommand,      rbac::RBAC_PERM_COMMAND_DEBUG, Console::Yes },
+            { "battleswon", HandleScourgeInvasionBattlesWonCommand, rbac::RBAC_PERM_COMMAND_DEBUG, Console::Yes },
+            { "startzone",  HandleScourgeInvasionStartZone,         rbac::RBAC_PERM_COMMAND_DEBUG, Console::Yes },
         };
 
         static ChatCommandTable worldStateCommandTable =
         {
-            { "sunsreach", sunsreachCommandTable }
+            { "sunsreach", sunsreachCommandTable },
+            { "scourgeinvasion", scourgeInvasionCommandTable }
         };
 
         static ChatCommandTable commandTable =
@@ -123,6 +126,46 @@ public:
         }
         sWorldState->SetSunwellGateCounter(SunwellGateCounters(index.value()), value.value());
         handler->PSendSysMessage(sWorldState->GetSunsReachPrintout());
+        return true;
+    }
+
+    static bool HandleScourgeInvasionCommand(ChatHandler* handler)
+    {
+        handler->PSendSysMessage(sWorldState->GetScourgeInvasionPrintout());
+        return true;
+    }
+
+    static bool HandleScourgeInvasionStateCommand(ChatHandler* handler, uint32 value)
+    {
+        if (value >= SI_STATE_MAX)
+        {
+            handler->PSendSysMessage("Syntax: .worldstate scourgeinvasion state <value>.");
+            handler->PSendSysMessage("Valid values are: 0 (Disabled), 1 (Enabled).");
+            return true;
+        }
+        sWorldState->SetScourgeInvasionState(SIState(value));
+        handler->PSendSysMessage("Scourge Invasion state set to {}.", value);
+        handler->PSendSysMessage(sWorldState->GetScourgeInvasionPrintout());
+        return true;
+    }
+
+    static bool HandleScourgeInvasionBattlesWonCommand(ChatHandler* /* handler */, int32 value)
+    {
+        sWorldState->AddBattlesWon(value);
+        return true;
+    }
+
+    static bool HandleScourgeInvasionStartZone(ChatHandler* handler, uint32 value)
+    {
+
+        if (value >= SI_TIMER_MAX)
+        {
+            handler->PSendSysMessage("Syntax: .worldstate scourgeinvasion startzone <value>.\nvalid values: 0-7");
+            return true;
+        }
+        sWorldState->StartZoneEvent(SIZoneIds(value));
+        handler->PSendSysMessage("Scourge Invasion event started for zone {}.", value);
+        handler->PSendSysMessage(sWorldState->GetScourgeInvasionPrintout());
         return true;
     }
 };

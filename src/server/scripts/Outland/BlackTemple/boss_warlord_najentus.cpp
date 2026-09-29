@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -46,7 +46,6 @@ enum Spells
 
 enum Events
 {
-    EVENT_TALK_CHECK                = 1,
     EVENT_ENRAGE                    = 2
 };
 
@@ -57,7 +56,7 @@ enum Misc
 
 struct boss_najentus : public BossAI
 {
-    boss_najentus(Creature* creature) : BossAI(creature, DATA_HIGH_WARLORD_NAJENTUS), _canTalk(true) { }
+    boss_najentus(Creature* creature) : BossAI(creature, DATA_HIGH_WARLORD_NAJENTUS) { }
 
     void Reset() override
     {
@@ -68,8 +67,6 @@ struct boss_najentus : public BossAI
 
     void JustEngagedWith(Unit* who) override
     {
-        _canTalk = true;
-
         BossAI::JustEngagedWith(who);
         Talk(SAY_AGGRO);
         DoCastSelf(SPELL_REMOVE_SPINES);
@@ -91,7 +88,7 @@ struct boss_najentus : public BossAI
 
         ScheduleTimedEvent(21s, [&]
         {
-            if (Unit* target = SelectTarget(SelectTargetMethod::Random, 1))
+            if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 0.0f, false, false))
             {
                 DoCast(target, SPELL_IMPALING_SPINE);
                 target->CastSpell(target, SPELL_SUMMON_IMPALING_SPINE, true);
@@ -108,15 +105,7 @@ struct boss_najentus : public BossAI
 
     void KilledUnit(Unit* victim) override
     {
-        if (victim->IsPlayer() && _canTalk)
-        {
-            Talk(SAY_SLAY);
-            _canTalk = false;
-            ScheduleUniqueTimedEvent(5s, [&]
-            {
-                _canTalk = true;
-            }, EVENT_TALK_CHECK);
-        }
+        Talk(SAY_SLAY, victim);
     }
 
     void JustDied(Unit* killer) override
@@ -126,8 +115,6 @@ struct boss_najentus : public BossAI
         Talk(SAY_DEATH);
     }
 
-private:
-    bool _canTalk;
 };
 
 class spell_najentus_needle_spine : public SpellScript

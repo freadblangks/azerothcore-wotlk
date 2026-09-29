@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -26,6 +26,7 @@
 #include "World.h"
 #include "WorldSession.h"
 #include "WorldSessionMgr.h"
+#include "WorldStateDefines.h"
 #include "WorldStatePackets.h"
 
 void ArenaScore::AppendToPacket(WorldPacket& data)
@@ -150,14 +151,14 @@ void Arena::RemovePlayer(Player* /*player*/)
 void Arena::FillInitialWorldStates(WorldPackets::WorldState::InitWorldStates& packet)
 {
     packet.Worldstates.reserve(2);
-    packet.Worldstates.emplace_back(ARENA_WORLD_STATE_ALIVE_PLAYERS_GREEN, GetAlivePlayersCountByTeam(TEAM_HORDE));
-    packet.Worldstates.emplace_back(ARENA_WORLD_STATE_ALIVE_PLAYERS_GOLD, GetAlivePlayersCountByTeam(TEAM_ALLIANCE));
+    packet.Worldstates.emplace_back(WORLD_STATE_ARENA_ALIVE_PLAYERS_GREEN, GetAlivePlayersCountByTeam(TEAM_HORDE));
+    packet.Worldstates.emplace_back(WORLD_STATE_ARENA_ALIVE_PLAYERS_GOLD, GetAlivePlayersCountByTeam(TEAM_ALLIANCE));
 }
 
 void Arena::UpdateArenaWorldState()
 {
-    UpdateWorldState(ARENA_WORLD_STATE_ALIVE_PLAYERS_GREEN, GetAlivePlayersCountByTeam(TEAM_HORDE));
-    UpdateWorldState(ARENA_WORLD_STATE_ALIVE_PLAYERS_GOLD, GetAlivePlayersCountByTeam(TEAM_ALLIANCE));
+    UpdateWorldState(WORLD_STATE_ARENA_ALIVE_PLAYERS_GREEN, GetAlivePlayersCountByTeam(TEAM_HORDE));
+    UpdateWorldState(WORLD_STATE_ARENA_ALIVE_PLAYERS_GOLD, GetAlivePlayersCountByTeam(TEAM_ALLIANCE));
 }
 
 void Arena::HandleKillPlayer(Player* player, Player* killer)
@@ -245,9 +246,13 @@ void Arena::EndBattleground(TeamId winnerTeamId)
             trans->Append(stmt2);
 
             uint8 memberId = 0;
-            for (auto const& [playerGuid, arenaLogEntryData] : ArenaLogEntries)
+            for (auto& [playerGuid, arenaLogEntryData] : ArenaLogEntries)
             {
                 auto const& score = PlayerScores.find(playerGuid.GetCounter());
+                // Update stats from PlayerScores if player is still in arena
+                if (score != PlayerScores.end())
+                    arenaLogEntryData.SaveStats(score->second->GetDamageDone(), score->second->GetHealingDone(), score->second->GetKillingBlows());
+
                 stmt2 = CharacterDatabase.GetPreparedStatement(CHAR_INS_ARENA_LOG_MEMBERSTATS);
                 stmt2->SetData(0, fightId);
                 stmt2->SetData(1, ++memberId);
@@ -256,18 +261,9 @@ void Arena::EndBattleground(TeamId winnerTeamId)
                 stmt2->SetData(4, arenaLogEntryData.ArenaTeamId);
                 stmt2->SetData(5, arenaLogEntryData.Acc);
                 stmt2->SetData(6, arenaLogEntryData.IP);
-                if (score != PlayerScores.end())
-                {
-                    stmt2->SetData(7, score->second->GetDamageDone());
-                    stmt2->SetData(8, score->second->GetHealingDone());
-                    stmt2->SetData(9, score->second->GetKillingBlows());
-                }
-                else
-                {
-                    stmt2->SetData(7, 0);
-                    stmt2->SetData(8, 0);
-                    stmt2->SetData(9, 0);
-                }
+                stmt2->SetData(7, arenaLogEntryData.DamageDone);
+                stmt2->SetData(8, arenaLogEntryData.HealingDone);
+                stmt2->SetData(9, arenaLogEntryData.KillingBlows);
                 trans->Append(stmt2);
             }
 
@@ -346,20 +342,20 @@ void Arena::EndBattleground(TeamId winnerTeamId)
                         // update achievement BEFORE personal rating update
                         uint32 rating = player->GetArenaPersonalRating(winnerArenaTeam->GetSlot());
                         player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_WIN_RATED_ARENA, rating ? rating : 1);
-                        player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_WIN_ARENA, GetMapId());
+                        player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_WIN_ARENA, GetMapId(), 0, player);
 
                         // Last standing - Rated 5v5 arena & be solely alive player
                         if (GetArenaType() == ARENA_TYPE_5v5 && aliveWinners == 1 && player->IsAlive())
-                        {
                             player->CastSpell(player, SPELL_LAST_MAN_STANDING, true);
-                        }
 
-                        winnerArenaTeam->MemberWon(player, loserMatchmakerRating, winnerMatchmakerChange);
+                        if (sScriptMgr->OnBeforeArenaTeamMemberUpdate(winnerArenaTeam, player, true, loserMatchmakerRating, winnerMatchmakerChange))
+                            winnerArenaTeam->MemberWon(player, loserMatchmakerRating, winnerMatchmakerChange);
                     }
                 }
                 else
                 {
-                    loserArenaTeam->MemberLost(player, winnerMatchmakerRating, loserMatchmakerChange);
+                    if (sScriptMgr->OnBeforeArenaTeamMemberUpdate(loserArenaTeam, player, false, winnerMatchmakerRating, loserMatchmakerChange))
+                        loserArenaTeam->MemberLost(player, winnerMatchmakerRating, loserMatchmakerChange);
 
                     // Arena lost => reset the win_rated_arena having the "no_lose" condition
                     player->ResetAchievementCriteria(ACHIEVEMENT_CRITERIA_CONDITION_NO_LOSE, 0);

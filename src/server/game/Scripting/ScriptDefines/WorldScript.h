@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -37,13 +37,14 @@ enum WorldHook
     WORLDHOOK_ON_AFTER_UNLOAD_ALL_MAPS,
     WORLDHOOK_ON_BEFORE_FINALIZE_PLAYER_WORLD_SESSION,
     WORLDHOOK_ON_BEFORE_WORLD_INITIALIZED,
+    WORLDHOOK_ON_AFTER_LOAD_DBC_STORES,
     WORLDHOOK_END
 };
 
 class WorldScript : public ScriptObject
 {
 protected:
-    WorldScript(const char* name, std::vector<uint16> enabledHooks = std::vector<uint16>());
+    WorldScript(char const* name, std::vector<uint16> enabledHooks = std::vector<uint16>());
 
 public:
     // Called when the open/closed state of the world changes.
@@ -92,6 +93,8 @@ public:
      * @brief This hook runs after all scripts loading and before itialized
      */
     virtual void OnBeforeWorldInitialized() { }
+
+    virtual void OnAfterLoadDBCStores() { }
 };
 
 #endif

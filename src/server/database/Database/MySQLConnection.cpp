@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -399,7 +399,7 @@ int MySQLConnection::ExecuteTransaction(std::shared_ptr<TransactionBase> transac
                 {
                     stmt = std::get<PreparedStatementBase*>(data.element);
                 }
-                catch (const std::bad_variant_access& ex)
+                catch (std::bad_variant_access const& ex)
                 {
                     LOG_FATAL("sql.sql", "> PreparedStatementBase not found in SQLElementData. {}", ex.what());
                     ABORT();
@@ -424,7 +424,7 @@ int MySQLConnection::ExecuteTransaction(std::shared_ptr<TransactionBase> transac
                 {
                     sql = std::get<std::string>(data.element);
                 }
-                catch (const std::bad_variant_access& ex)
+                catch (std::bad_variant_access const& ex)
                 {
                     LOG_FATAL("sql.sql", "> std::string not found in SQLElementData. {}", ex.what());
                     ABORT();
@@ -453,7 +453,7 @@ int MySQLConnection::ExecuteTransaction(std::shared_ptr<TransactionBase> transac
     return 0;
 }
 
-std::size_t MySQLConnection::EscapeString(char* to, const char* from, std::size_t length)
+std::size_t MySQLConnection::EscapeString(char* to, char const* from, std::size_t length)
 {
     return mysql_real_escape_string(m_Mysql, to, from, length);
 }

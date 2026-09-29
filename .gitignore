@@ -2,9 +2,12 @@
 # AzerothCore
 #
 
+.cache
 /conf/*
 !/conf/dist
 /modules/*
+!/modules/mod-wxl-dbc
+!/modules/mod-wxl-dbc/*
 !/modules/*.md
 !/modules/*.sh
 !/modules/CMakeLists.txt
@@ -54,6 +57,18 @@ CMakeLists.txt.user
 *.LOCAL.*
 
 #
+# Agents
+#
+.agents/plans/**
+
+#
+# Claude
+#
+.claude/worktrees
+.claude/settings.local.json
+.claude/plans/**
+
+#
 # IDE & other software
 #
 /.settings/
@@ -70,6 +85,12 @@ cmake-build-*/*
 coverage-report/
 .vs
 
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
 #
 # Eclipse
 #
@@ -85,6 +106,14 @@ local.properties
 .loadpath
 .project
 .cproject
+
+# vcpkg integration
+/vcpkg/
+/vcpkg-ports/
+
+# Python bytecode cache
+__pycache__/
+*.py[cod]
 
 
 # ==================

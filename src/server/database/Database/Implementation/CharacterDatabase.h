@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -124,6 +124,7 @@ enum CharacterDatabaseStatements : uint32
     CHAR_REP_ITEM_INSTANCE,
     CHAR_UPD_ITEM_INSTANCE,
     CHAR_UPD_ITEM_INSTANCE_ON_LOAD,
+    CHAR_UPD_ITEM_COUNT,
     CHAR_DEL_ITEM_INSTANCE,
     CHAR_DEL_ITEM_INSTANCE_BY_OWNER,
     CHAR_UPD_GIFT_OWNER,
@@ -277,6 +278,7 @@ enum CharacterDatabaseStatements : uint32
     CHAR_UPD_REM_AT_LOGIN_FLAG,
     CHAR_UPD_ALL_AT_LOGIN_FLAGS,
     CHAR_INS_BUG_REPORT,
+    CHAR_INS_SPAM_REPORT,
     CHAR_UPD_PETITION_NAME,
     CHAR_INS_PETITION_SIGNATURE,
     CHAR_UPD_ACCOUNT_ONLINE,
@@ -332,6 +334,7 @@ enum CharacterDatabaseStatements : uint32
 
     CHAR_SEL_CHAR_DEL_INFO_BY_GUID,
     CHAR_SEL_CHAR_DEL_INFO_BY_NAME,
+    CHAR_SEL_CHAR_DEL_INFO_BY_NAME_LIMIT,
     CHAR_SEL_CHAR_DEL_INFO,
 
     CHAR_SEL_CHARS_BY_ACCOUNT_ID,
@@ -360,6 +363,7 @@ enum CharacterDatabaseStatements : uint32
     CHAR_SEL_GUILD_BANK_COUNT_ITEM,
     CHAR_SEL_CHAR_INVENTORY_ITEM_BY_ENTRY,
     CHAR_SEL_CHAR_INVENTORY_ITEM_BY_ENTRY_AND_OWNER,
+    CHAR_SEL_CHAR_INVENTORY_STACKS_BY_ENTRY_AND_OWNER,
     CHAR_SEL_MAIL_ITEMS_BY_ENTRY,
     CHAR_SEL_AUCTIONHOUSE_ITEM_BY_ENTRY,
     CHAR_SEL_GUILD_BANK_ITEM_BY_ENTRY,
@@ -382,8 +386,8 @@ enum CharacterDatabaseStatements : uint32
     CHAR_DEL_INSTANCE_BY_INSTANCE,
     CHAR_DEL_MAIL_ITEM_BY_ID,
     CHAR_INS_PETITION,
-    CHAR_DEL_PETITION_BY_GUID,
-    CHAR_DEL_PETITION_SIGNATURE_BY_GUID,
+    CHAR_DEL_PETITION_BY_ID,
+    CHAR_DEL_PETITION_SIGNATURE_BY_ID,
     CHAR_DEL_CHAR_DECLINED_NAME,
     CHAR_INS_CHAR_DECLINED_NAME,
     CHAR_UPD_CHAR_RACE,
@@ -427,6 +431,8 @@ enum CharacterDatabaseStatements : uint32
     CHAR_UDP_CHAR_HONOR_POINTS_ACCUMULATIVE,
     CHAR_UDP_CHAR_ARENA_POINTS,
     CHAR_UDP_CHAR_ARENA_POINTS_ACCUMULATIVE,
+    CHAR_UPD_ALL_HONOR_POINTS,
+    CHAR_UPD_ALL_ARENA_POINTS,
     CHAR_UDP_CHAR_MONEY,
     CHAR_UDP_CHAR_MONEY_ACCUMULATIVE,
     CHAR_UPD_CHAR_REMOVE_GHOST, // pussywizard
@@ -443,6 +449,9 @@ enum CharacterDatabaseStatements : uint32
     CHAR_UPD_CHAR_QUESTSTATUS_REWARDED_FACTION_CHANGE,
     CHAR_UPD_CHAR_QUESTSTATUS_REWARDED_ACTIVE,
     CHAR_UPD_CHAR_QUESTSTATUS_REWARDED_ACTIVE_BY_QUEST,
+    CHAR_SEL_CHAR_QUESTSTATUS_BY_QUEST,
+    CHAR_SEL_CHAR_QUESTSTATUS_SEASONAL_BY_QUEST,
+    CHAR_SEL_CHAR_QUESTSTATUS_REWARDED_BY_QUEST,
     CHAR_DEL_CHAR_SKILL_BY_SKILL,
     CHAR_INS_CHAR_SKILLS,
     CHAR_UDP_CHAR_SKILLS,
@@ -470,7 +479,6 @@ enum CharacterDatabaseStatements : uint32
     CHAR_DEL_PET_AURAS,
     CHAR_DEL_PET_SPELL_COOLDOWNS,
     CHAR_INS_PET_SPELL_COOLDOWN,
-    CHAR_DEL_PET_SPELL_BY_SPELL,
     CHAR_INS_PET_SPELL,
     CHAR_INS_PET_AURA,
 
@@ -520,6 +528,11 @@ enum CharacterDatabaseStatements : uint32
     CHAR_INS_RESERVED_PLAYER_NAME,
     CHAR_INS_PROFANITY_PLAYER_NAME,
 
+    CHAR_SEL_CHAT_FILTER,
+    CHAR_SEL_CHAT_FILTER_WORD,
+    CHAR_INS_CHAT_FILTER_WORD,
+    CHAR_DEL_CHAT_FILTER_WORD,
+
     CHAR_SEL_CHAR_SETTINGS,
     CHAR_REP_CHAR_SETTINGS,
     CHAR_DEL_CHAR_SETTINGS,
@@ -528,6 +541,11 @@ enum CharacterDatabaseStatements : uint32
     CHAR_INSERT_INSTANCE_SAVED_DATA,
     CHAR_DELETE_INSTANCE_SAVED_DATA,
     CHAR_SANITIZE_INSTANCE_SAVED_DATA,
+
+    CHAR_SEL_WORLD_STATE,
+    CHAR_REP_WORLD_STATE,
+
+    CHAR_NO_OP_PROVIDE_REALM_CONTEXT,
 
     MAX_CHARACTERDATABASE_STATEMENTS
 };

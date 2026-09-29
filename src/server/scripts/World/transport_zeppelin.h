@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -36,6 +36,7 @@ enum ZeppelinEvent
     EVENT_UC_TO_OG_DEPARTURE      = 15321,
     EVENT_UC_TO_GROMGOL_DEPARTURE = 15313,
     EVENT_GROMGOL_TO_UC_DEPARTURE = 15315,
+    EVENT_WK_DEPARTURE            = 15430,
 };
 
 enum ZeppelinMaster
@@ -53,6 +54,11 @@ enum ZeppelinMaster
     NPC_DRENK_SPANNERSPARK = 26540,
     NPC_ZELLI_HOTNOZZLE    = 34765,
     NPC_KRENDLE_BIGPOCKETS = 34766,
+};
+
+enum ZeppelinTransport
+{
+    GO_WESTGUARD_ZEPPELIN = 186371,
 };
 
 const float SEARCH_RANGE_ZEPPELIN_MASTER = 32.0f;

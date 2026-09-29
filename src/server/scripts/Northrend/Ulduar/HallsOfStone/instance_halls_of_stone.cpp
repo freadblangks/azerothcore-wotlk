@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -20,10 +20,27 @@
 #include "ScriptedCreature.h"
 #include "halls_of_stone.h"
 
+ObjectData const summonData[] =
+{
+    { NPC_IRON_SLUDGE, BOSS_SJONNIR },
+    { 0,               0            }
+};
+
+ObjectData const creatureData[] =
+{
+    { NPC_SJONNIR,     BOSS_SJONNIR },
+    { 0,               0            }
+};
+
+BossBoundaryData const boundaries =
+{
+    { BOSS_SJONNIR, new RectangleBoundary(1206.56f, 1341.4185f, 579.9434f, 753.9599f) }
+};
+
 class instance_halls_of_stone : public InstanceMapScript
 {
 public:
-    instance_halls_of_stone() : InstanceMapScript("instance_halls_of_stone", 599) { }
+    instance_halls_of_stone() : InstanceMapScript("instance_halls_of_stone", MAP_HALLS_OF_STONE) { }
 
     InstanceScript* GetInstanceScript(InstanceMap* pMap) const override
     {
@@ -45,7 +62,6 @@ public:
         ObjectGuid goSjonnirDoorGUID;
         ObjectGuid goLeftPipeGUID;
         ObjectGuid goRightPipeGUID;
-        ObjectGuid goTribunalDoorGUID;
 
         ObjectGuid SjonnirGUID;
         ObjectGuid BrannGUID;
@@ -58,6 +74,10 @@ public:
         void Initialize() override
         {
             SetHeaders(DataHeader);
+            SetBossNumber(MAX_ENCOUNTER);
+            LoadObjectData(creatureData, nullptr);
+            LoadSummonData(summonData);
+            LoadBossBoundaries(boundaries);
             memset(&Encounter, 0, sizeof(Encounter));
 
             brannAchievement = false;
@@ -70,12 +90,28 @@ public:
         {
             for (uint8 i = 0; i < MAX_ENCOUNTER; ++i)
             {
-                if (Encounter[i] == IN_PROGRESS && i != BRANN_BRONZEBEARD)
+                // The escort is not an encounter, it must not keep the instance locked
+                if (i == BRANN_BRONZEBEARD)
+                {
+                    continue;
+                }
+
+                // Krystallus and the Maiden of Grief are tracked through SetData, the rest through boss states
+                if (Encounter[i] == IN_PROGRESS || GetBossState(i) == IN_PROGRESS)
                 {
                     return true;
                 }
             }
             return false;
+        }
+
+        void OnUnitDeath(Unit* unit) override
+        {
+            if (unit->IsPlayer() && GetBossState(BOSS_TRIBUNAL_OF_AGES) == IN_PROGRESS)
+            {
+                if (Creature* brann = instance->GetCreature(GetGuidData(NPC_BRANN)))
+                    brann->AI()->DoAction(ACTION_PLAYER_DEATH_IN_TRIBUNAL);
+            }
         }
 
         void OnGameObjectCreate(GameObject* go) override
@@ -87,7 +123,8 @@ public:
                     break;
                 case GO_ABEDNEUM:
                     goAbedneumGUID = go->GetGUID();
-                    if (Encounter[BOSS_TRIBUNAL_OF_AGES] == DONE)
+                    // Encounter[] is toggled back and forth by the post event lore, the boss state is the reliable one
+                    if (GetBossState(BOSS_TRIBUNAL_OF_AGES) == DONE)
                         go->SetGoState(GO_STATE_ACTIVE);
                     break;
                 case GO_MARNAK:
@@ -96,13 +133,9 @@ public:
                 case GO_TRIBUNAL_CONSOLE:
                     goTribunalConsoleGUID = go->GetGUID();
                     break;
-                case GO_TRIBUNAL_ACCESS_DOOR:
-                    goTribunalDoorGUID = go->GetGUID();
-                    go->SetGoState(GO_STATE_READY);
-                    break;
                 case GO_SKY_FLOOR:
                     goSkyRoomFloorGUID = go->GetGUID();
-                    if (Encounter[BOSS_TRIBUNAL_OF_AGES] == DONE)
+                    if (GetBossState(BOSS_TRIBUNAL_OF_AGES) == DONE)
                         go->SetGoState(GO_STATE_ACTIVE);
                     break;
                 case GO_SJONNIR_CONSOLE:
@@ -110,7 +143,7 @@ public:
                     break;
                 case GO_SJONNIR_DOOR:
                     goSjonnirDoorGUID = go->GetGUID();
-                    if (Encounter[BOSS_TRIBUNAL_OF_AGES] == DONE)
+                    if (GetBossState(BRANN_DOOR) == DONE)
                         go->SetGoState(GO_STATE_ACTIVE);
                     break;
                 case GO_LEFT_PIPE:
@@ -126,13 +159,11 @@ public:
         {
             switch (creature->GetEntry())
             {
-                case NPC_SJONNIR:
-                    SjonnirGUID = creature->GetGUID();
-                    break;
                 case NPC_BRANN:
                     BrannGUID = creature->GetGUID();
                     break;
             }
+            InstanceScript::OnCreatureCreate(creature);
         }
 
         ObjectGuid GetGuidData(uint32 id) const override
@@ -141,8 +172,6 @@ public:
             {
                 case GO_TRIBUNAL_CONSOLE:
                     return goTribunalConsoleGUID;
-                case GO_TRIBUNAL_ACCESS_DOOR:
-                    return goTribunalDoorGUID;
                 case GO_SJONNIR_CONSOLE:
                     return goSjonnirConsoleGUID;
                 case GO_SJONNIR_DOOR:
@@ -178,6 +207,7 @@ public:
                 case BOSS_TRIBUNAL_OF_AGES:
                 case BOSS_SJONNIR:
                 case BRANN_BRONZEBEARD:
+                case BRANN_DOOR:
                     return Encounter[id];
             }
 
@@ -207,10 +237,6 @@ public:
                 isMaidenOfGriefDead = type == BOSS_MAIDEN_OF_GRIEF || isMaidenOfGriefDead;
                 isKrystalusDead = type == BOSS_KRYSTALLUS || isKrystalusDead;
             }
-
-            if (isMaidenOfGriefDead && isKrystalusDead)
-                if (GameObject* tribunalDoor = instance->GetGameObject(goTribunalDoorGUID))
-                    tribunalDoor->SetGoState(GO_STATE_ACTIVE);
 
             if (type == BOSS_TRIBUNAL_OF_AGES && data == SPECIAL)
             {
@@ -299,6 +325,12 @@ public:
                     pSkyRoomFloor->SetGoState(GO_STATE_READY);
             }
 
+            if (type == BRANN_DOOR && data == DONE)
+            {
+                if (GameObject* pSjonnirDoor = instance->GetGameObject(goSjonnirDoorGUID))
+                    pSjonnirDoor->SetGoState(GO_STATE_ACTIVE);
+            }
+
             if (type == DATA_BRANN_ACHIEVEMENT)
             {
                 brannAchievement = (bool)data;
@@ -321,6 +353,7 @@ public:
             data >> Encounter[2];
             data >> Encounter[3];
             data >> Encounter[4];
+            data >> Encounter[5];
         }
 
         void WriteSaveDataMore(std::ostringstream& data) override
@@ -329,7 +362,8 @@ public:
                 << Encounter[1] << ' '
                 << Encounter[2] << ' '
                 << Encounter[3] << ' '
-                << Encounter[4] << ' ';
+                << Encounter[4] << ' '
+                << Encounter[5] << ' ';
         }
     };
 };

@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -61,6 +61,9 @@ enum SharedSpells
     // Shadowmourne questline
     SPELL_UNSATED_CRAVING               = 71168,
     SPELL_SHADOWS_FATE                  = 71169,
+
+    // Empowering Blood Orb
+    SPELL_EMPOWERED_BLOOD               = 70227,
 
     // Misc
     SPELL_WEB_BEAM                      = 69887,
@@ -282,6 +285,13 @@ enum CreaturesIds
     NPC_KINETIC_BOMB_TARGET                     = 38458,
     NPC_KINETIC_BOMB                            = 38454,
     NPC_SHOCK_VORTEX                            = 38422,
+    NPC_DARKFALLEN_BLOOD_KNIGHT                 = 37595,
+    NPC_DARKFALLEN_NOBLE                        = 37663,
+    NPC_DARKFALLEN_ARCHMAGE                     = 37664,
+    NPC_DARKFALLEN_ADVISOR                      = 37571,
+    NPC_DARKFALLEN_TACTICIAN                    = 37666,
+    NPC_VAMPIRIC_FIEND                          = 37901,
+    NPC_ORB_VISUAL_STALKER                      = 38463,
 
     // Blood-Queen Lana'thel
     NPC_BLOOD_QUEEN_LANA_THEL                   = 37955,
@@ -434,6 +444,7 @@ enum GameObjectsIds
     GO_CRIMSON_HALL_DOOR                    = 201376,
     GO_BLOOD_ELF_COUNCIL_DOOR               = 201378,
     GO_BLOOD_ELF_COUNCIL_DOOR_RIGHT         = 201377,
+    GO_EMPOWERING_BLOOD_ORB                 = 201741,
 
     // Blood-Queen Lana'thel
     GO_DOODAD_ICECROWN_BLOODPRINCE_DOOR_01  = 201746,
@@ -557,27 +568,12 @@ enum QuestsICC
     QUEST_A_FEAST_OF_SOULS                  = 24547
 };
 
-enum WorldStatesICC
-{
-    WORLDSTATE_SHOW_TIMER           = 4903,
-    WORLDSTATE_EXECUTION_TIME       = 4904,
-    WORLDSTATE_SHOW_ATTEMPTS        = 4940,
-    WORLDSTATE_ATTEMPTS_REMAINING   = 4941,
-    WORLDSTATE_ATTEMPTS_MAX         = 4942,
-};
-
 enum PutricideEventFlags
 {
     PUTRICIDE_EVENT_FLAG_FESTERGUT_VALVE    = 1,
     PUTRICIDE_EVENT_FLAG_ROTFACE_VALVE      = 2,
     PUTRICIDE_EVENT_FLAG_TRAP_INPROGRESS    = 4,
     PUTRICIDE_EVENT_FLAG_TRAP_FINISHED      = 8,
-};
-
-enum AreaIds
-{
-    AREA_ICECROWN_CITADEL   = 4812,
-    AREA_THE_FROZEN_THRONE  = 4859,
 };
 
 enum ItemIds
